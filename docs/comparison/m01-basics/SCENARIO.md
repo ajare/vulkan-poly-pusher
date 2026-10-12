@@ -5,12 +5,12 @@ a frozen-MPP client and the equivalent VPP client, so the delivered rendering
 capabilities can be evaluated on identical content. This file is the **contract**
 for the Milestone 1 "Basics" scene.
 
-> Status: **visual contract only; CPU portion runnable (#3).** The shared
-> `tools/AssetValidate.cpp` client loads/validates the assets below against both
-> frozen MPP and VPP without a context. Rendering becomes runnable when the
-> Milestone 1 rendering slice lands. Until
-> then, invoking the VPP client on this scene must fail with a clear
-> "not implemented" diagnostic, not render nothing silently.
+> Status: **CPU portion runnable (#3), shared clear/present prelude runnable (#4).**
+> `tools/AssetValidate.cpp` validates assets in both libraries without a context;
+> `tools/ClearPresent.cpp` exercises the original startup/window sequence and
+> compares initial/resized clear captures. The textured-geometry portion below is
+> still a visual contract, not delivered rendering. Requests for that unsupported
+> portion fail explicitly, never render nothing as a successful scene.
 
 ## Scene contents (authored, backend-agnostic)
 
@@ -67,11 +67,22 @@ retained CPU regressions. There are no visual captures/tolerances in this portio
 See [`../../migration/M01-cpu-assets.md`](../../migration/M01-cpu-assets.md) for
 runnable instructions, provenance, results and unsupported-feature boundaries.
 
+## Delivered clear/present prelude (#4)
+
+The shared `tools/ClearPresent.cpp` client supplies 180 scripted frames in three
+lifetime cycles, initial/resized PPM captures, exact expected-colour checks, and a
+1/255 paired-channel tolerance. Native Vulkan + sync validation is mandatory in
+its CTest wrapper. Frozen MPP and VPP captures match with maximum difference 0/255
+on this Linux host. See [`../../migration/M01-vulkan-clear.md`](../../migration/M01-vulkan-clear.md)
+for commands, dependency choices, subset boundaries and qualification evidence.
+The optional `--minimize` scenario fails if the compositor refuses restore; this
+area remains unqualified. This prelude does not test depth, UVs or winding.
+
 ## Blocked on
 
-- VPP rendering slice (M1) for the VPP half.
-- A capture path on the host (no screenshot tooling present — see
-  [`../../migration/M01-smoke-evidence.md`](../../migration/M01-smoke-evidence.md)).
-- Windows runner and actual Vulkan/synchronization-validation runs for full
-  milestone qualification. The Khronos layer is installed; there is no VPP GPU
-  execution to validate in this CPU portion.
+- Remaining VPP rendering slice (M1) for textured geometry/depth.
+- Remaining scene capture support: #4 delivers clear-only captures without external
+  screenshot tooling, not full scene or intermediate graph capture.
+- Windows runner, reliable minimize/restore, and remaining rendering validation
+  for full milestone qualification. Clear/present GPU execution has clean Linux
+  Vulkan/synchronization-validation evidence; later capabilities do not yet.

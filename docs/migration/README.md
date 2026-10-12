@@ -34,6 +34,12 @@ in this repository; the reference is reproduced read-only for comparison.
 subset, shared comparison client, original regressions, exact reference comparisons,
 public declaration checks, narrow GL decoupling and platform qualification gaps.
 
+## Milestone 1 (ticket #4) — Vulkan clear/present
+
+[`M01-vulkan-clear.md`](M01-vulkan-clear.md) records the native window/device/
+swapchain slice, shared clear captures, dependency pins, validation and lifecycle
+results, and remaining platform/compositor qualification gaps.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
@@ -42,9 +48,10 @@ capabilities must **fail explicitly**, never masquerade as a successful no-op.
 The delivered subset is the **reference reproduction + coverage inventory +
 comparison-scenario contract + CPU authored-asset loading/validation and round trips**.
 All eight original module targets have explicit CPU subsets; ProgramBuilder and
-`VppAssetValidate` run without a graphics context. VPP has **no rendering
-capability yet** — the first VPP rendering slice (init, uploads, minimal
-shader/material, depth, presentation, capture) lands with the rest of Milestone 1.
+`VppAssetValidate` run without a graphics context. VPP now also supports **native
+Vulkan window initialization, clear, presentation and diagnostic clear capture**
+through the existing public window sequence. Uploads, minimal shader/material,
+geometry and depth remain for the rest of Milestone 1.
 Until a given VPP capability exists, invoking it must raise a clear
 "not implemented" diagnostic rather than return success or draw nothing silently.
 This rule is a standing gate for every subsequent milestone, not just M01.
@@ -62,17 +69,15 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | VPP CPU assets on Windows | ⛔ **Unverified — no Windows runner** |
 | **Windows reference build + smoke** | ⛔ **BLOCKED — no Windows runner available** |
 | **Khronos Vulkan validation layer installed** | ✅ **Installed + verified loadable** (`VK_LAYER_KHRONOS_validation`, Vulkan 1.4.341) |
-| **VPP Vulkan / sync-validation results** | ⏳ **Deferred — no VPP renderer yet** (see note) |
+| **VPP Vulkan / sync-validation results** | ✅ Clear/resize/shutdown on RADV + lavapipe, zero diagnostics (#4) |
+| Shared frozen-MPP/VPP clear captures | ✅ Both resolutions, maximum difference 0/255 (#4) |
+| Minimize/restore | ⛔ Intermittent compositor restore failure; optional scenario retains failing assertion (#4) |
 
 Per spec #1, **missing Windows evidence blocks milestone sign-off** and is reported
 here rather than treated as a pass. See
 [M01-smoke-evidence.md](M01-smoke-evidence.md) for the exact gap and how to close it.
 
-> **Validation-layer note:** the layer is now installed and confirmed to load into a
-> real Vulkan instance. However, the frozen MPP reference is an **OpenGL** renderer
-> (links `libGLEW`/`libGLX`, makes **zero** Vulkan calls), so there is nothing in
-> the M01 deliverable for the Vulkan validation layer to validate. Vulkan +
-> synchronization-validation results become meaningful only when the VPP rendering
-> slice lands (rest of Milestone 1); running the covered scenarios under
-> `VK_LAYER_KHRONOS_validation` (with sync-validation feature enabled) is a
-> standing gate for that sign-off, not something M01 can produce today.
+> **Validation scope:** #4 produces actual Vulkan and synchronization-validation
+> evidence for the delivered clear subset only. It does not qualify unimplemented
+> uploads, shaders, geometry, depth or complete applications. Frozen MPP is OpenGL
+> and is compared through a separately built shared client, not Vulkan validation.

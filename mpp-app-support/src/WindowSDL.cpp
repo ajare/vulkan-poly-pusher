@@ -3,12 +3,14 @@
 #include <stdexcept>
 #include <utility>
 #include "mpp/app/WindowSDL.h"
+#include "WindowBridge.h"
 
 using namespace std;
 
 WindowSDL::WindowSDL(string title) :
 	mWindow(nullptr)
 	, mContextGL(nullptr)
+	, mFullscreen(false)
 	, mTitle(std::move(title))
 {
 }
@@ -25,21 +27,13 @@ SDL_Window* WindowSDL::getWindow()
 
 void WindowSDL::create(int width, int height, bool fullScreen, bool vsync)
 {
+    if (mWindow) throw runtime_error("WindowSDL::create requires destroy before recreation");
+    if (width <= 0 || height <= 0) throw runtime_error("Window dimensions must be positive");
 	mWidth = width;
 	mHeight = height;
 	mFullscreen = fullScreen;
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-
-	// A resizable OpenGL window exposes the native resize and maximise controls.
-	// SDL3 has no position arguments; an undefined position is the default and a
-	// fullscreen window ignores its position anyway.
-	SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
-	if (fullScreen) windowFlags |= SDL_WINDOW_FULLSCREEN;
+    SDL_WindowFlags windowFlags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
+    if (fullScreen) windowFlags |= SDL_WINDOW_FULLSCREEN;
 	mWindow = SDL_CreateWindow(mTitle.c_str(), width, height, windowFlags);
 
 	if (!mWindow)
@@ -48,27 +42,12 @@ void WindowSDL::create(int width, int height, bool fullScreen, bool vsync)
 		throw runtime_error("Could not create SDL window: " + err);
 	}
 
-	// An SDL3 fullscreen window is borderless-desktop unless it is given an
-	// explicit mode. Pin the closest mode to the requested size so fullscreen
-	// still changes video mode the way it did under SDL2.
-	SDL_DisplayMode fullscreenMode;
-	if (SDL_GetClosestFullscreenDisplayMode(SDL_GetDisplayForWindow(mWindow), width, height, 0.0f, false, &fullscreenMode))
-	{
-		SDL_SetWindowFullscreenMode(mWindow, &fullscreenMode);
-	}
-
-#ifdef _DEBUG
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-#endif
-
-	mContextGL = SDL_GL_CreateContext(mWindow);
-	if (!SDL_GL_MakeCurrent(mWindow, mContextGL))
-	{
-		throw runtime_error("Could not set the OpenGL context.");
-	}
-
-	// This window presents through OpenGL, so vsync is the GL swap interval.
-	SDL_GL_SetSwapInterval(vsync ? 1 : 0);
+	try {
+        mpp::detail::registerWindow(mWindow, vsync);
+    } catch (...) {
+        SDL_DestroyWindow(mWindow); mWindow = nullptr;
+        throw;
+    }
 
 	// SDL3 leaves text input disabled until it is asked for.
 	SDL_StartTextInput(mWindow);
@@ -78,13 +57,13 @@ void WindowSDL::create(int width, int height, bool fullScreen, bool vsync)
 
 void WindowSDL::destroy()
 {
-	if (mContextGL) { SDL_GL_DestroyContext(mContextGL); mContextGL = nullptr; }
+	mpp::detail::unregisterWindow(mWindow);
 	if (mWindow) { SDL_DestroyWindow(mWindow); mWindow = nullptr; }
 }
 	
 void WindowSDL::setFullscreen(bool fullscreen)
 {
-	SDL_SetWindowFullscreen(mWindow, fullscreen);
+	if (!SDL_SetWindowFullscreen(mWindow, fullscreen)) throw runtime_error(SDL_GetError());
 
 	mFullscreen = fullscreen;
 }
@@ -95,18 +74,18 @@ void WindowSDL::setSize(int width, int height)
 	if (mFullscreen)
 	{
 		setFullscreen(false);
-		SDL_SetWindowSize(mWindow, width, height);
+		if (!SDL_SetWindowSize(mWindow, width, height)) throw runtime_error(SDL_GetError());
 		setFullscreen(true);
 	}
 	else
 	{
-		SDL_SetWindowSize(mWindow, width, height);
+		if (!SDL_SetWindowSize(mWindow, width, height)) throw runtime_error(SDL_GetError());
 	}
 }
 
 void WindowSDL::show()
 {
-	SDL_GL_SwapWindow(mWindow);
+	mpp::detail::presentWindow(mWindow);
 }
 
 bool WindowSDL::processEvents(InputManager* inputMgr)

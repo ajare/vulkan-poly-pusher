@@ -52,6 +52,8 @@ namespace mpp
 	class RenderTexture;
 	class Profiler; // Forward-declared so as to not pollute client apps.
 	class ResourceManager;
+	namespace detail { class VulkanWindow; }
+	struct BackendCapabilities;
 
 	class _MPPAPI RenderSystem : public ResourceWrangler
 	{
@@ -373,10 +375,12 @@ namespace mpp
 		// built on first use, so a pipeline whose graph has no MPP.ParticleScene
 		// pass never pays for compute programs or shader storage buffers.
 		//
-		std::unique_ptr<ParticleSystem> mParticleSystem;
+		std::shared_ptr<detail::VulkanWindow> mVulkanWindow;
+		friend _MPPAPI BackendCapabilities getBackendCapabilities(RenderSystem const&);
+		friend _MPPAPI void captureNextPresent(RenderSystem&, std::string const&);
 		// Trails are a distinct primitive with their own point histories, GPU
 		// buffers, update kernel and ribbon draw path.
-		std::unique_ptr<TrailSystem> mTrailSystem;
+		// TrailSystem ownership is introduced with the trails rendering slice.
 
 		//
 		// Scenes
