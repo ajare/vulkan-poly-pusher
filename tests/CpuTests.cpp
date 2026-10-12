@@ -44,9 +44,12 @@ bool binaryRoundTrip(std::string* failure) {
     } catch (std::exception const& error) { *failure = error.what(); return false; }
 }
 
+bool shaderCompilationTests(std::string* failure);
+
 int main() {
     struct Test { char const* name; bool (*run)(std::string*); };
     Test tests[] = {
+        {"Vulkan runtime shader compilation/reflection", shaderCompilationTests},
         {"RSE5 binary round trip", binaryRoundTrip},
         {"diagnostics", mpp::runDiagnosticTests},
         {"graph topology", mpp::runRenderGraphTopologyTests},

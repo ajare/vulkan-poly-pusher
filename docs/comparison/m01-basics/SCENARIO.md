@@ -78,6 +78,17 @@ for commands, dependency choices, subset boundaries and qualification evidence.
 The optional `--minimize` scenario fails if the compositor refuses restore; this
 area remains unqualified. This prelude does not test depth, UVs or winding.
 
+## Delivered shader compilation fixture (#93)
+
+`shaders/mpp/` and `shaders/vpp/` contain authored vertex/fragment program
+variants named `Basics.Triangle`, selected through the backend's resource root.
+The VPP body ports clip depth while retaining the same geometry and authoring
+tokens. CPU regressions load the VPP file stream, compile it at runtime and
+validate reflected attributes, uniforms and descriptors. Programmatic edits and
+negative cases exercise the same public stream seam. This does **not** yet draw
+the triangle or claim visual equivalence; #95–#97 supply realization, drawing and
+paired captures. See [`../../migration/M01-shader-compilation.md`](../../migration/M01-shader-compilation.md).
+
 ## Blocked on
 
 - Remaining VPP rendering slice (M1) for textured geometry/depth.

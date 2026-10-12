@@ -40,6 +40,12 @@ public declaration checks, narrow GL decoupling and platform qualification gaps.
 swapchain slice, shared clear captures, dependency pins, validation and lifecycle
 results, and remaining platform/compositor qualification gaps.
 
+## Milestone 1 (ticket #93) — runtime shader compilation
+
+[`M01-shader-compilation.md`](M01-shader-compilation.md) records the pinned,
+private glslang/SPIRV-Reflect toolchain, runtime program-stream compilation,
+backend resource-root variants, reflected bindings, CPU regressions and subset.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
@@ -50,8 +56,10 @@ comparison-scenario contract + CPU authored-asset loading/validation and round t
 All eight original module targets have explicit CPU subsets; ProgramBuilder and
 `VppAssetValidate` run without a graphics context. VPP now also supports **native
 Vulkan window initialization, clear, presentation and diagnostic clear capture**
-through the existing public window sequence. Uploads, minimal shader/material,
-geometry and depth remain for the rest of Milestone 1.
+through the existing public window sequence, plus **runtime Vulkan shader
+compilation and dependency-neutral SPIR-V reflection** through program streams.
+Uploads, GPU program/material realization, geometry and depth remain for the rest
+of Milestone 1.
 Until a given VPP capability exists, invoking it must raise a clear
 "not implemented" diagnostic rather than return success or draw nothing silently.
 This rule is a standing gate for every subsequent milestone, not just M01.

@@ -4,3 +4,9 @@
 [submodule "ext/sdl"]
 	path = ext/sdl
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "ext/glslang"]
+	path = ext/glslang
+	url = https://github.com/KhronosGroup/glslang.git
+[submodule "ext/spirv-reflect"]
+	path = ext/spirv-reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git

@@ -112,6 +112,7 @@ namespace mpp
 	void ProgramStream::loadImpl()
 	{
 		auto parser = mParser;
+		if (!parser) THROW_MPP("Program stream has no shader parser.", __LINE__, __FILE__, __func__);
 		if (!mFragmentPreamble.empty())
 		{
 			auto source = parser->getInputFragmentSource();
@@ -128,6 +129,7 @@ namespace mpp
 		parser->build(mAttribs);
 
 		setVertexSource(parser->getGeneratedVertexSource());
+		setGeometrySource(parser->getGeneratedGeometrySource());
 		setFragmentSource(parser->getGeneratedFragmentSource());
 	}
 
