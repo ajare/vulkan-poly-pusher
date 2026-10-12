@@ -20,7 +20,8 @@ blocking, not passed.**
 | Fallback Vulkan | llvmpipe (LLVM 21.1.8, 256 bits), CPU device |
 | Frozen commit | `21b1bcff040a4cfd32e3a5e814b9a4092d2b7cef` |
 | Submodules | assimp `c35200e3`, glew `285c35d3` (2.3.1), sdl `147a8ee3`, utils `eae7140c7` (yaml-cpp `c3f81127`) |
-| `VK_LAYER_KHRONOS_validation` | **absent** (only Mesa/Intel layers listed) |
+| `VK_LAYER_KHRONOS_validation` | **installed** (Vulkan 1.4.341), verified loadable |
+| MPP GPU API | OpenGL (`libGLEW`/`libGLX`/`libGLdispatch`); **no `libvulkan` linkage** |
 
 ## Build
 
@@ -64,11 +65,18 @@ set `exitCode=1`).
 1. **Windows** — no Windows host/runner was available. The Windows build + smoke
    path in [M01-reference-setup.md](M01-reference-setup.md) is unexecuted.
    ⛔ Blocks Milestone 1 qualification (spec #1).
-2. **Khronos Vulkan validation layer** — `VK_LAYER_KHRONOS_validation` is not
-   installed on this host, so no Vulkan/synchronization-validation results exist.
-   ⛔ Blocks validation-based sign-off. Note: the frozen reference is an OpenGL
-   renderer, so Vulkan validation applies to VPP rendering once it exists; the
-   layer must be installed and verified before that milestone's sign-off.
+2. **Vulkan / synchronization-validation results** — the `VK_LAYER_KHRONOS_validation`
+   layer is now **installed and verified loadable** (forcing
+   `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation vulkaninfo` enables it, exit 0,
+   no validation errors). **However, the frozen MPP reference is an OpenGL renderer
+   and makes zero Vulkan calls**, so there is nothing in the M01 deliverable for the
+   layer to validate. Vulkan + sync-validation evidence is therefore **deferred to
+   the VPP rendering slice** (rest of Milestone 1), not a gap M01 can close. The
+   layer-presence prerequisite is satisfied for that future work:
+   ```sh
+   VK_LAYER_ENABLE=VK_LAYER_KHRONOS_validation \
+     VK_VALIDATION_FEATURE_ENABLE=synchronization <vpp-app> ...
+   ```
 3. **Visual capture tooling** — no screenshot/grab tool (`grim`, `scrot`,
    `import`, `spectacle`, `gnome-screenshot`) is installed on this host, so no
    pixel captures were taken here. The M01 comparison-scenario contract

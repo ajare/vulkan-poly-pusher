@@ -72,25 +72,29 @@ cmake --build build --config Release --parallel
 > pass."). Provisioning a Windows runner (or Windows CI job) is the follow-up that
 > closes this gap.
 
-## Vulkan validation layer (NOT present on this host)
+## Vulkan validation layer (installed + verified)
 
 The M01 acceptance criteria require Vulkan + synchronization-validation results for
-rendering work. This host's `vulkaninfo` lists only Mesa/Intel layers
-(`VK_LAYER_MESA_*`, `VK_LAYER_INTEL_nullhw`); **`VK_LAYER_KHRONOS_validation` is
-absent**. This matches the planning note in spec #1.
-
-To close the gap before validation-based sign-off:
+rendering work. The `VK_LAYER_KHRONOS_validation` layer is now **installed** and
+confirmed to load into a real Vulkan instance:
 
 ```sh
-# Install the Khronos Vulkan SDK (provides VK_LAYER_KHRONOS_validation), then:
-vulkaninfo 2>/dev/null | grep VK_LAYER_KHRONOS_validation   # must be listed
-VK_LAYER_ENABLE=VK_LAYER_KHRONOS_validation ./<app> ...    # re-run scenarios under validation
+vulkaninfo 2>/dev/null | grep VK_LAYER_KHRONOS_validation
+# VK_LAYER_KHRONOS_validation (Khronos Validation Layer) Vulkan version 1.4.341, layer version 1
+
+VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation vulkaninfo   # loads into a real instance, exit 0
 ```
 
-VPP rendering validation (Vulkan + `VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION`
-/ `VK_KHR synchronization validation`) is deferred to the milestone that first
-produces a VPP renderer; the layer must be installed and verified before that
-sign-off.
+**Important:** the frozen MPP reference is an **OpenGL** renderer (links
+`libGLEW`/`libGLX`, makes **zero** Vulkan calls), so the Vulkan validation layer
+has nothing to validate in the M01 deliverable. Vulkan + synchronization-validation
+results become meaningful only when the VPP rendering slice lands (rest of
+Milestone 1). The layer-presence prerequisite is now satisfied for that work:
+
+```sh
+VK_LAYER_ENABLE=VK_LAYER_KHRONOS_validation \
+  VK_VALIDATION_FEATURE_ENABLE=synchronization <vpp-app> ...   # re-run VPP scenarios under validation
+```
 
 ## Notes
 

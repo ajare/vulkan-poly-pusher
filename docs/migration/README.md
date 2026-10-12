@@ -51,8 +51,18 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | Coverage inventory complete | ✅ Delivered (this directory) |
 | Baseline defects recorded, not fixed | ✅ Delivered (2 candidates) |
 | **Windows reference build + smoke** | ⛔ **BLOCKED — no Windows runner available** |
-| **Khronos Vulkan validation layer** | ⛔ **BLOCKED — `VK_LAYER_KHRONOS_validation` not installed on this host** |
+| **Khronos Vulkan validation layer installed** | ✅ **Installed + verified loadable** (`VK_LAYER_KHRONOS_validation`, Vulkan 1.4.341) |
+| **VPP Vulkan / sync-validation results** | ⏳ **Deferred — no VPP renderer yet** (see note) |
 
-Per spec #1, **missing Windows and validation-layer evidence blocks milestone
-sign-off** and is reported here rather than treated as a pass. See
+Per spec #1, **missing Windows evidence blocks milestone sign-off** and is reported
+here rather than treated as a pass. See
 [M01-smoke-evidence.md](M01-smoke-evidence.md) for the exact gap and how to close it.
+
+> **Validation-layer note:** the layer is now installed and confirmed to load into a
+> real Vulkan instance. However, the frozen MPP reference is an **OpenGL** renderer
+> (links `libGLEW`/`libGLX`, makes **zero** Vulkan calls), so there is nothing in
+> the M01 deliverable for the Vulkan validation layer to validate. Vulkan +
+> synchronization-validation results become meaningful only when the VPP rendering
+> slice lands (rest of Milestone 1); running the covered scenarios under
+> `VK_LAYER_KHRONOS_validation` (with sync-validation feature enabled) is a
+> standing gate for that sign-off, not something M01 can produce today.
