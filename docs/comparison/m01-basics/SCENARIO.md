@@ -5,8 +5,10 @@ a frozen-MPP client and the equivalent VPP client, so the delivered rendering
 capabilities can be evaluated on identical content. This file is the **contract**
 for the Milestone 1 "Basics" scene.
 
-> Status: **contract only.** The MPP half is runnable today (the frozen reference).
-> The VPP half becomes runnable when the Milestone 1 rendering slice lands. Until
+> Status: **visual contract only; CPU portion runnable (#3).** The shared
+> `tools/AssetValidate.cpp` client loads/validates the assets below against both
+> frozen MPP and VPP without a context. Rendering becomes runnable when the
+> Milestone 1 rendering slice lands. Until
 > then, invoking the VPP client on this scene must fail with a clear
 > "not implemented" diagnostic, not render nothing silently.
 
@@ -54,9 +56,22 @@ camera transform, resolution, clear colour, and capture frame number.
 - Deliverables per run: paired captures (MPP, VPP), automated behavioural check
   results, and the recorded tolerance + conventions.
 
+## Delivered CPU portion (#3)
+
+`assets/` contains unchanged frozen-MPP preview scene/pipeline/library/particle
+assets and negative editor fixtures. The preview scene is a parser comparison
+fixture, **not** the final textured-overlap/orientation rendering scene above.
+`tests/compare_assets.py` compares exact diagnostic, numeric and XML/YAML round-trip
+observations against separately built clients; CTest runs local assertions and
+retained CPU regressions. There are no visual captures/tolerances in this portion.
+See [`../../migration/M01-cpu-assets.md`](../../migration/M01-cpu-assets.md) for
+runnable instructions, provenance, results and unsupported-feature boundaries.
+
 ## Blocked on
 
 - VPP rendering slice (M1) for the VPP half.
 - A capture path on the host (no screenshot tooling present — see
   [`../../migration/M01-smoke-evidence.md`](../../migration/M01-smoke-evidence.md)).
-- Windows runner + Khronos validation layer for full milestone qualification.
+- Windows runner and actual Vulkan/synchronization-validation runs for full
+  milestone qualification. The Khronos layer is installed; there is no VPP GPU
+  execution to validate in this CPU portion.

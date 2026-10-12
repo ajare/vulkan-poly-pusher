@@ -1,0 +1,82 @@
+ParticleEffect:
+  version: 2
+  name: Dense steam vent
+  maximumParticleCount: 1024
+  Bounds:
+    center: 0 3 0
+    size: 8 8 8
+  Emitters:
+    - name: Vent plume
+      maximumParticleCount: 1024
+      transform: 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1
+      Spawn:
+        shape: cone
+        shapeParameters: 0.68 0.4 0 0
+        seed: 6103
+        mode: continuous
+        enabled: true
+        rate: 82
+        burstCount: 0
+        initialVelocityMin: -0.28 0.75 -0.28 0
+        initialVelocityMax: 0.28 1.75 0.28 0
+        colourMin: 0.8 0.84 0.88 0.38
+        colourMax: 1 1 1 0.72
+        lifetime: 2.2 4.3
+        size: 0.35 0.78
+        rotation: 0 6.283185
+        angularVelocity: -0.8 0.8
+      Behaviours:
+        Drag:
+          coefficient: 0.11
+        CurlNoise:
+          frequency: 0.55 0.42 0.55
+          strength: 0.68
+          scroll: 0.07 0.13 0.025
+          timeScale: 0.75
+        Turbulence:
+          frequency: 0.95 0.7 0.95
+          strength: 0.28
+          scroll: 0.02 0.1 0
+          timeScale: 0.7
+          octaves: 3
+          lacunarity: 2
+          gain: 0.55
+      Curves:
+        Size:
+          default: 1
+          Keys:
+            - { time: 0, value: 0.3 }
+            - { time: 0.28, value: 1 }
+            - { time: 0.72, value: 1.8 }
+            - { time: 1, value: 2.7 }
+        Alpha:
+          default: 1
+          Keys:
+            - { time: 0, value: 0 }
+            - { time: 0.12, value: 0.82 }
+            - { time: 0.58, value: 0.55 }
+            - { time: 1, value: 0 }
+        Colour:
+          default: 0.86 0.9 0.94
+          Keys:
+            - { time: 0, colour: 0.68 0.73 0.78 }
+            - { time: 0.35, colour: 0.9 0.94 0.98 }
+            - { time: 1, colour: 1 1 1 }
+      Appearance:
+        tint: 1 1 1
+        alpha: 0.7
+        emissiveIntensity: 0
+        softFadeDistance: 0.65
+        maximumDrawDistance: 180
+        minimumProjectedSize: 1
+        atlasColumns: 1
+        atlasRows: 1
+        frameCount: 1
+        animation: none
+        randomStart: true
+        animationRate: 0
+        billboard: cameraFacing
+        blendClass: weightedOit
+        depthSort: false
+        distortion: true
+        distortionStrength: 0.0012

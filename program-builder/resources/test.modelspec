@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<Specification>
+
+	<Buffers indexed="true" primitive="triangles" storage="static">
+		<Buffer>
+			<Channel data="position3" type="float32" />
+			<Channel data="normal4" type="float32" />
+			<Channel data="texcoord2" type="float32" />
+			<Channel data="colour4" type="uint8" normalised="true" />
+		</Buffer>
+	</Buffers>
+	
+	<Programs>
+		<!-- Basic diffuse texturing. -->
+		<Program name="test">
+			<!-- If not included, use built-in based on buffer spec and illumination model. -->
+			<VertexShader>test.vert</VertexShader>
+			<!-- If not included, use built-in based on buffer spec and illumination model. -->
+			<FragmentShader>test.frag</FragmentShader>
+			
+			<!-- Texture samplers. -->
+			<Textures>
+				<Texture binding="tex" value="${Material.Diffuse.Map.0}" />
+			</Textures>
+			
+			<!-- Any extra uniforms used by this program. -->
+			<Uniforms>
+			</Uniforms>
+		</Program>
+	</Programs>
+	
+	<!-- 
+	1. Implement sub materials, ie change hierarchy to be Materials/Material
+	2. Name attribute is parsed.  This is a regex.  If multiple material names match input, throw error
+	3. Have a default material with no name, which is used if no matches are found.  If this is not present, throw error
+	4. Values from material are passed into Program, eg texture map for 'tex' texture binding, etc
+	6. Parse program definition for shaders.  Either write the given names to the .material file or leave out, to be loaded
+	   in MPP itself
+	-->
+	<Materials>
+		<Material>
+			
+			<!-- Program used -->
+			<Program name="test" />
+		</Material>
+
+		<Material name="^statue_.*">
+			
+			<!-- Program used -->
+			<Program name="test" />
+		</Material>
+	</Materials>
+</Specification>

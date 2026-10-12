@@ -1,0 +1,4 @@
+#include "mpp/MppException.h"
+#include "mpp/PbrPipelineStream.h"
+#include "mpp/PbrPipelineTemplate.h"
+namespace mpp { PbrPipelineTemplate::PbrPipelineTemplate(std::string const&n,RenderSystem*r,ResourceManager*m,ResourceStreamPtr s):Resource(n,"PbrPipeline",r,m,s){} void PbrPipelineTemplate::createImpl(){auto s=dynamic_cast<PbrPipelineStream*>(getResourceStream().get());if(!s||!s->getDocument())THROW_MPP("PbrPipeline resource requires a populated stream.",__LINE__,__FILE__,__func__);if(s->getDocument()->validate().hasErrors())THROW_MPP("Cannot create invalid PbrPipeline resource.",__LINE__,__FILE__,__func__);mDocument=s->getDocument();} void PbrPipelineTemplate::destroyImpl(){mDocument.reset();} std::shared_ptr<PbrPipelineDocument> const& PbrPipelineTemplate::getDocument()const{return mDocument;} }

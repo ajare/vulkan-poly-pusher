@@ -1,0 +1,60 @@
+ResourceLibrary:
+  version: 1
+  name: DemoPreview
+  Resources:
+    PbrMaterial:
+      name: ExternalPbr
+      MeshSpecification:
+        primitive: triangles
+        indexed: true
+        storage: static
+        Buffer:
+          - data: position3
+            type: float32
+          - data: normal3
+            type: float32
+          - data: texcoord2
+            type: float32
+          - data: colour4
+            type: float32
+            normalised: true
+          - data: tangent4
+            type: float32
+      Surface:
+        baseColourFactor: 1 1 1 1
+        metallicFactor: 0
+        roughnessFactor: 0.8
+        emissiveFactor: 0 0 0
+        alphaMode: OPAQUE
+    Program:
+      name: ExternalProgram
+      positionType: 3D
+      textures: 1
+      MeshSpecification:
+        primitive: triangles
+        indexed: true
+        storage: static
+        Buffer:
+          - data: position3
+            type: float32
+          - data: normal3
+            type: float32
+          - data: texcoord2
+            type: float32
+          - data: colour4
+            type: float32
+            normalised: true
+    Texture:
+      name: ExternalTexture
+      target: 2D
+      filename: arrow.png
+      colourSpace: SRGB
+      minFilter: LINEAR
+      magFilter: LINEAR
+      wrap: CLAMP_TO_EDGE
+    Sampler:
+      name: LinearClamp
+      minFilter: LINEAR
+      magFilter: LINEAR
+      wrap: CLAMP_TO_EDGE
+      maxAnisotropy: 1

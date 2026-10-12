@@ -36,6 +36,18 @@ investigation/approval items only. **No code was changed.**
 - Status: **candidate, newly observed.** Same handling as BD-1: investigate real
   usage, then decide parity vs. approved deviation. Do not silently correct.
 
+### BD-3 — ProgramBuilder's sample uses an unsupported type spelling
+
+- Location: `program-builder/resources/test.modelspec`, colour channel `type="uint8"`.
+- Observation: frozen ProgramBuilder and VPP both return exit 1 with
+  `Invalid type: uint8`. The retained `SpecificationParser` recognizes `uint8_t`,
+  not `uint8` (the separate resource-parser vocabulary is not interchangeable).
+- Status: **sample-defect candidate; not fixed**. The imported sample remains
+  byte-identical. A separate `tests/fixtures/program.modelspec` uses the existing
+  `uint8_t` spelling to exercise the valid tool path; both clients return exit 0.
+- BD-1 and BD-2 were subsequently confirmed by live CPU client comparison in #3;
+  VPP preserves both original mappings. See `M01-cpu-assets.md`.
+
 ## Approved compatibility exceptions
 
 _None yet._ Any header that cannot be preserved exactly (e.g. a GL-dependent

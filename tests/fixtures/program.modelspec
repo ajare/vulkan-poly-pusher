@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!-- Same buffer layout as the frozen ProgramBuilder sample, using the
+     SpecificationParser's existing uint8_t spelling (not the sample's uint8). -->
+<Specification>
+  <Buffers indexed="true" primitive="triangles" storage="static">
+    <Buffer>
+      <Channel data="position3" type="float32" />
+      <Channel data="normal4" type="float32" />
+      <Channel data="texcoord2" type="float32" />
+      <Channel data="colour4" type="uint8_t" normalised="true" />
+    </Buffer>
+  </Buffers>
+</Specification>

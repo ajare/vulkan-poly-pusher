@@ -1,0 +1,162 @@
+PbrPipeline:
+  version: 1
+  name: Minimal PBR Pipeline
+  PreviewScene:
+    file: ../DefaultPbrPreview.scene.yaml
+  ResourceLibraries:
+    - file: ../PbrPreviewResources.yaml
+  LocalResources:
+    PbrMaterial:
+      name: Preview.LocalPbr
+      MeshSpecification:
+        primitive: triangles
+        indexed: true
+        storage: static
+        Buffer:
+          - data: position3
+            type: float32
+          - data: normal3
+            type: float32
+          - data: texcoord2
+            type: float32
+          - data: colour4
+            type: float32
+            normalised: true
+          - data: tangent4
+            type: float32
+      Surface:
+        baseColourFactor: 0.72 0.76 0.82 1
+        metallicFactor: 0
+        roughnessFactor: 0.65
+        emissiveFactor: 0 0 0
+        normalScale: 1
+        occlusionStrength: 1
+        alphaMode: OPAQUE
+        alphaCutoff: 0.5
+        doubleSided: false
+    Texture:
+      - name: Preview.Environment
+        target: CUBEMAP
+        filename: ../arrow.png
+        colourSpace: SRGB
+        mipmaps: true
+        minFilter: LINEAR_MIPMAP_LINEAR
+        magFilter: LINEAR
+        wrap: CLAMP_TO_EDGE
+      - name: Preview.BrdfLut
+        target: 2D
+        filename: ../arrow.png
+        colourSpace: LINEAR
+        minFilter: LINEAR
+        magFilter: LINEAR
+        wrap: CLAMP_TO_EDGE
+    Sampler:
+      name: Preview.LocalSampler
+      minFilter: LINEAR
+      magFilter: LINEAR
+      wrap: CLAMP_TO_EDGE
+      maxAnisotropy: 1
+    PostEffectMaterial:
+      name: PostEffect.ToneMap
+      Program:
+        Ref: __mpp_p2d_tonemap__
+      SamplerSlots:
+        - TEX1
+      Uniforms:
+        - name: EXPOSURE
+          type: float
+          value: 1
+        - name: TONE_MAP_OPERATOR
+          type: int
+          value: 1
+  Imports:
+    - id: screen
+      semantic: presentation
+      format: RGBA8
+      usage: colourAttachment,presentation
+      required: true
+  Outputs:
+    - name: Main
+      image: Presentation
+      taaDepth: SceneDepth
+      AntiAliasing:
+        msaa: inherit
+        ssaa: inherit
+        taa: inherit
+        fxaa: inherit
+  Environment:
+    binding: Preview.Environment
+    irradiance: Preview.Environment
+    prefilteredSpecular: Preview.Environment
+    brdfLut: Preview.BrdfLut
+    background: Preview.Environment
+  Bloom:
+    enabled: false
+    blurPasses: 0
+  PreviewBindings:
+    - binding: Preview.Main
+      resource: Preview.LocalPbr
+    - binding: Preview.Spheres
+      resource: Preview.LocalPbr
+    - binding: Preview.Ground
+      resource: Preview.LocalPbr
+  PreviewOverrides:
+    - model: Sphere.0.0
+      binding: Preview.Main
+      Values:
+        Float:
+          name: PBR_ROUGHNESS_FACTOR
+          value: 0.35
+        Vec4:
+          name: PBR_BASE_COLOUR_FACTOR
+          value: 1 0.8 0.6 1
+  Extensions:
+    Extension:
+      namespace: urn:mpp:editor-metadata:1
+      Payload:
+        EditorMetadata:
+          category: Minimal PBR Pipeline
+  RenderGraph:
+    Images:
+      - name: SceneHdr
+        format: RGBA16F
+        usage: colourAttachment,sampled
+        colourSpace: LINEAR
+        minFilter: LINEAR
+        magFilter: LINEAR
+        wrap: CLAMP_TO_EDGE
+      - name: SceneDepth
+        format: DEPTH24
+        usage: depthAttachment,sampled
+      - name: Presentation
+        format: RGBA8
+        usage: sampled,colourAttachment,presentation
+        import: screen
+        external: true
+        transient: false
+    Passes:
+      - name: PbrScene
+        type: scene
+        factory: MPP.PbrScene
+        Colours:
+          - image: SceneHdr
+            load: clear
+            store: store
+            clear: 0 0 0 1
+        Depth:
+          image: SceneDepth
+          load: clear
+          store: store
+          clear: 1
+      - name: ToneMapPresentation
+        type: present
+        factory: MPP.FullscreenEffect
+        program: PostEffect.ToneMap
+        Inputs:
+          - sampler: TEX1
+            image: SceneHdr
+        Colours:
+          - image: Presentation
+            load: clear
+            store: store
+            clear: 0 0 0 1

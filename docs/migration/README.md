@@ -28,13 +28,21 @@ in this repository; the reference is reproduced read-only for comparison.
 | [`M01-deviations-and-defects.md`](M01-deviations-and-defects.md) | Observed baseline-defect candidates and the approval policy. Nothing is fixed silently. |
 | [`../comparison/m01-basics/SCENARIO.md`](../comparison/m01-basics/SCENARIO.md) | The M01 shared "Basics" comparison-scenario contract (loads in both MPP and VPP clients). |
 
+## Milestone 1 (ticket #3) — CPU assets
+
+[`M01-cpu-assets.md`](M01-cpu-assets.md) records the runnable context-free module
+subset, shared comparison client, original regressions, exact reference comparisons,
+public declaration checks, narrow GL decoupling and platform qualification gaps.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
 capabilities must **fail explicitly**, never masquerade as a successful no-op.
 
-As of M01 the delivered subset is the **reference reproduction + coverage
-inventory + comparison-scenario contract**. VPP itself has **no rendering
+The delivered subset is the **reference reproduction + coverage inventory +
+comparison-scenario contract + CPU authored-asset loading/validation and round trips**.
+All eight original module targets have explicit CPU subsets; ProgramBuilder and
+`VppAssetValidate` run without a graphics context. VPP has **no rendering
 capability yet** — the first VPP rendering slice (init, uploads, minimal
 shader/material, depth, presentation, capture) lands with the rest of Milestone 1.
 Until a given VPP capability exists, invoking it must raise a clear
@@ -49,7 +57,9 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | Frozen reference smoke-runs on Linux | ✅ Verified (`DemoSuite --package-smoke-test`, 30 frames) |
 | Delivered MPP tests pass on Linux | ✅ Verified (context-free + GPU + CTest) |
 | Coverage inventory complete | ✅ Delivered (this directory) |
-| Baseline defects recorded, not fixed | ✅ Delivered (2 candidates) |
+| Baseline defects recorded, not fixed | ✅ Delivered (3 candidates) |
+| VPP CPU assets/regressions/interface checks on Linux | ✅ Verified Release + Debug (ticket #3) |
+| VPP CPU assets on Windows | ⛔ **Unverified — no Windows runner** |
 | **Windows reference build + smoke** | ⛔ **BLOCKED — no Windows runner available** |
 | **Khronos Vulkan validation layer installed** | ✅ **Installed + verified loadable** (`VK_LAYER_KHRONOS_validation`, Vulkan 1.4.341) |
 | **VPP Vulkan / sync-validation results** | ⏳ **Deferred — no VPP renderer yet** (see note) |

@@ -1,0 +1,92 @@
+cmake_minimum_required(VERSION 3.22)
+project(VulkanPolyPusher VERSION 0.1 LANGUAGES CXX)
+include(CTest)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+option(VPP_BUILD_RENDERER "Build the not-yet-delivered Vulkan renderer" OFF)
+if(VPP_BUILD_RENDERER)
+    message(FATAL_ERROR "Vulkan rendering is not implemented in the CPU authored-assets subset")
+endif()
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ext/utils/vendor/yaml-cpp/CMakeLists.txt")
+    message(FATAL_ERROR "Initialize pinned dependencies: git submodule update --init --recursive")
+endif()
+add_subdirectory(ext/utils EXCLUDE_FROM_ALL)
+target_include_directories(Utils PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/ext/utils/include")
+add_library(mpp_vendor_headers INTERFACE)
+target_include_directories(mpp_vendor_headers INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/vendor/include")
+function(cpu_module target module export)
+    set(sources ${ARGN})
+    list(TRANSFORM sources PREPEND "${module}/src/")
+    add_library(${target} SHARED ${sources})
+    target_include_directories(${target} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/${module}/include")
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/compat")
+    target_compile_definitions(${target} PRIVATE ${export} NOMINMAX)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_options(${target} PRIVATE "LINKER:--no-undefined")
+    endif()
+    target_link_libraries(${target} PUBLIC mpp_vendor_headers)
+endfunction()
+cpu_module(MppData mpp-data MPP_DATA_DLL_EXPORT StructuredData.cpp)
+cpu_module(MppMesh mpp-mesh MPP_MESH_DLL_EXPORT MaterialInformation.cpp MeshDefinition.cpp MeshSpecification.cpp Vertex.cpp VertexBufferAttributeLayout.cpp VertexBufferDefinition.cpp VertexData.cpp)
+cpu_module(MppProgram mpp-program MPP_PROGRAM_DLL_EXPORT Attribute.cpp Parser.cpp ShaderStage.cpp)
+target_include_directories(MppProgram PRIVATE mpp-program/include/mpp/program)
+target_sources(MppProgram PRIVATE mpp-program/include/mpp/program/glslRegistry.cpp)
+target_link_libraries(MppProgram PUBLIC MppMesh PRIVATE Utils)
+cpu_module(MassivePolyPusher mpp MPP_DLL_EXPORT
+    Camera.cpp Colour.cpp ClipRectangle.cpp Diagnostic.cpp DiagnosticTests.cpp
+    MppException.cpp SceneDocument.cpp LegacyPipelineDocument.cpp PbrPipelineDocument.cpp
+    RenderGraph.cpp RenderGraphTests.cpp RenderGraphPassFactoryRegistry.cpp
+    UniformCollection.cpp TextureParams.cpp SamplerParams.cpp PbrMaterialFeatures.cpp PbrMaterialTests.cpp
+    ParticleEffectValidator.cpp ParticleEffectBounds.cpp ResourceWrangler.cpp ResourceStream.cpp
+    TextureStreamBase.cpp TextureStream.cpp TextureData.cpp SamplerStream.cpp
+    BasicMaterialStream.cpp PbrMaterialStream.cpp PostEffectMaterialStream.cpp ProgramStream.cpp
+    ProgrammaticProgramStream.cpp ProgrammaticTextureStream.cpp ProgrammaticBasicMaterialStream.cpp
+    ParticleEffectStream.cpp ProgrammaticParticleEffectStream.cpp StringStream.cpp FileDataStream.cpp
+    Logger.cpp StaticLogger.cpp ResourceStreamSerializer.cpp
+    ProgrammaticPbrMaterialStream.cpp ProgrammaticPostEffectMaterialStream.cpp
+    ProgrammaticSamplerStream.cpp ProgrammaticStringStream.cpp)
+target_sources(MassivePolyPusher PRIVATE compat/CpuResourceBoundary.cpp compat/CpuDefinitions.cpp)
+target_link_libraries(MassivePolyPusher PUBLIC MppData MppMesh MppProgram PRIVATE Utils)
+cpu_module(MppResourceParsers mpp-resource-parsers MPP_RESOURCE_PARSERS_DLL_EXPORT
+    SceneParser.cpp SceneSerializer.cpp RenderGraphParser.cpp RenderGraphSerializer.cpp
+    LegacyPipelineParser.cpp LegacyPipelineSerializer.cpp LegacyPipelineDocumentLoader.cpp
+    PbrPipelineParser.cpp PbrPipelineSerializer.cpp PbrPipelineDocumentLoader.cpp
+    ParticleEffectParser.cpp ParticleEffectSerializer.cpp ParticleResourceTests.cpp RenderGraphResourceTests.cpp
+    LegacyPipelineResourceValidator.cpp PbrPipelineResourceValidator.cpp
+    FileStream.cpp FileTextureStream.cpp FileSamplerStream.cpp FileProgramStream.cpp FileStringStream.cpp
+    FileBasicMaterialStream.cpp FilePbrMaterialStream.cpp FilePostEffectMaterialStream.cpp FileParticleEffectStream.cpp
+    MeshSpecificationParser.cpp Serializer.cpp XmlSerializer.cpp YamlSerializer.cpp DocumentWriter.cpp)
+target_link_libraries(MppResourceParsers PUBLIC MassivePolyPusher PRIVATE Utils)
+cpu_module(MppMeshSpecificationParser mpp-mesh-specification-parser MPP_MESH_SPECIFICATION_PARSER_DLL_EXPORT ModelspecStream.cpp ProgramInformation.cpp SpecificationParser.cpp)
+target_link_libraries(MppMeshSpecificationParser PUBLIC MppResourceParsers PRIVATE Utils)
+cpu_module(MppHelper mpp-helper MPP_HELPER_DLL_EXPORT FpsCamera.cpp FreeCamera.cpp OrthoCamera.cpp)
+target_link_libraries(MppHelper PUBLIC MassivePolyPusher)
+find_package(Threads REQUIRED)
+add_library(MppAppSupport STATIC mpp-app-support/src/BackgroundWork.cpp mpp-app-support/src/CommandStack.cpp mpp-app-support/src/DocumentFile.cpp mpp-app-support/src/DocumentFoundationTests.cpp mpp-app-support/src/DocumentId.cpp mpp-app-support/src/PackageManifest.cpp mpp-app-support/src/ZipArchive.cpp)
+target_include_directories(MppAppSupport PUBLIC mpp-app-support/include)
+target_link_libraries(MppAppSupport PUBLIC MassivePolyPusher Utils Threads::Threads)
+add_executable(VppAssetValidate tools/AssetValidate.cpp)
+target_link_libraries(VppAssetValidate PRIVATE MppResourceParsers)
+add_executable(ProgramBuilder program-builder/src/Main.cpp)
+target_link_libraries(ProgramBuilder PRIVATE MppMeshSpecificationParser MppProgram Utils)
+if(BUILD_TESTING)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME public_declarations COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/audit_public_headers.py" "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_library(VppPublicInterfaces OBJECT tests/PublicInterfaces.cpp)
+    target_link_libraries(VppPublicInterfaces PRIVATE MppResourceParsers MppAppSupport MppMeshSpecificationParser MppHelper)
+    add_executable(VppCpuTests tests/CpuTests.cpp)
+    target_compile_definitions(VppCpuTests PRIVATE VPP_CPU_ONLY)
+    target_link_libraries(VppCpuTests PRIVATE MppResourceParsers MppAppSupport MppMeshSpecificationParser MppHelper)
+    add_test(NAME cpu_regressions COMMAND VppCpuTests)
+    add_test(NAME authored_assets COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_assets.py" "$<TARGET_FILE:VppAssetValidate>")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/tool-smoke")
+    add_test(NAME program_builder COMMAND ProgramBuilder
+        -v "${CMAKE_CURRENT_SOURCE_DIR}/program-builder/resources/test.vert"
+        -f "${CMAKE_CURRENT_SOURCE_DIR}/program-builder/resources/test.frag"
+        -m "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/program.modelspec")
+    set_tests_properties(program_builder PROPERTIES WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tool-smoke")
+    set_tests_properties(cpu_regressions authored_assets PROPERTIES TIMEOUT 120)
+endif()

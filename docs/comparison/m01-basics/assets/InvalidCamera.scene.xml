@@ -1,0 +1,7 @@
+<Scene>
+  <version>1</version>
+  <name>Invalid Camera Scene</name>
+  <Camera><position>0 0 0</position><target>0 0 0</target><fov>200</fov><near>-1</near><far>0</far></Camera>
+  <Layers><Layer>Default</Layer></Layers>
+  <Models><Model><id>Box</id><source>box</source><materialBinding>Preview.Main</materialBinding><Layers><Layer>Default</Layer></Layers></Model></Models>
+</Scene>

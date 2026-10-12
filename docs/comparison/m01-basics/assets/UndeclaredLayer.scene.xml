@@ -1,0 +1,6 @@
+<Scene>
+  <version>1</version><name>Invalid Undeclared Layer</name><environmentBinding>Preview.Environment</environmentBinding>
+  <Layers><Layer>Default</Layer></Layers>
+  <Models><Model><id>Box</id><source>box</source><materialBinding>Preview.Main</materialBinding><Layers><Layer>Missing</Layer></Layers></Model></Models>
+  <Lights><Light><id>Key</id><type>directional</type><direction>0 -1 0</direction><castsShadows>true</castsShadows></Light></Lights>
+</Scene>

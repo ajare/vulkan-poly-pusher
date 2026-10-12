@@ -1,0 +1,6 @@
+<PbrPipeline>
+  <version>1</version><name>Invalid Local Sampler</name>
+  <LocalResources><Sampler><name>InvalidSampler</name><minFilter>NOT_A_FILTER</minFilter></Sampler></LocalResources>
+  <Outputs><Output><name>Main</name><image>Screen</image><AntiAliasing><msaa>inherit</msaa><ssaa>inherit</ssaa><taa>inherit</taa><fxaa>inherit</fxaa></AntiAliasing></Output></Outputs>
+  <RenderGraph><Images><Image><name>Screen</name><format>RGBA8</format><usage>sampled,colourAttachment,presentation</usage><import>screen</import><external>true</external><transient>false</transient></Image></Images><Passes/></RenderGraph>
+</PbrPipeline>

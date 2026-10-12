@@ -1,0 +1,34 @@
+@@Version
+
+## Position2
+@@In pos = vec2
+## Position4
+@@In pos = vec4
+## TexCoords2
+@@Passthrough uv = vec2
+## TexCoords4
+@@Passthrough uv = vec4
+## Colour1
+@@Passthrough colour = float
+## Colour3
+@@Passthrough colour = vec3
+## Colour4
+@@Passthrough colour = vec4
+## Rotation
+@@Out texRotation = mat4
+
+void main()
+{
+## Rotation
+	vec2 d = normalize(@In(pos).zw);
+	@Out(texRotation) = 
+		mat4( d.x, d.y, 0.0, 0.0,
+		     -d.y, d.x, 0.0, 0.0,
+		      0.0, 0.0, 1.0, 0.0,
+		      0.0, 0.0, 0.0, 1.0);
+##
+
+	vec4 transVertex = @MCPMatrix * vec4(@In(pos).xy, 0, 1);
+	vec2 centredPos = vec2(transVertex.x - @HalfWindowSize.x, transVertex.y - @HalfWindowSize.y);
+	gl_Position = vec4(centredPos / @HalfWindowSize, 0, 1);
+}
