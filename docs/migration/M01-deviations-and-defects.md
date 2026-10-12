@@ -1,0 +1,58 @@
+# M01 — Deviations and baseline-defect candidates
+
+Policy (spec #1): the frozen reference is **never** changed to excuse a regression.
+Intentional deviations and observed baseline defects are recorded and approved
+**separately**. Nothing here is fixed silently.
+
+## Baseline-defect candidates (found during M01 inventory)
+
+Both are in the file-texture internal-format name→GL-enum table and are
+**inconsistent with the surrounding pattern**. They are recorded as
+investigation/approval items only. **No code was changed.**
+
+### BD-1 — `R16_SNORM` maps to a two-channel format
+
+- Location: `mpp-resource-parsers/src/FileTextureStream.cpp:53`
+- Code: `internalFormats["R16_SNORM"] = GL_RG16_SNORM;`
+- Observation: a single-channel name (`R16_SNORM`) is mapped to the two-channel
+  `GL_RG16_SNORM`. The neighbouring single-channel entries follow the expected
+  pattern (`R8_SNORM → GL_R8_SNORM`, `R8 → GL_R8`, `R16 → GL_R16`,
+  `R16F → GL_R16F`), and the three other 16-bit single-channel sites in `mpp`
+  (`Texture.cpp:140`, `ProgrammaticTextureStream.cpp:157`,
+  `ProgrammaticRenderTextureStream.cpp:180`) all correctly use `GL_R16_SNORM`.
+- Status: **candidate, matches the item flagged in spec #1's Further Notes.**
+  Not authorized to change. Needs: confirm whether any authored content actually
+  requests `R16_SNORM` through this parser; if so, decide whether VPP preserves
+  the (arguably wrong) behaviour for parity or files an approved deviation.
+
+### BD-2 — `RG16_SNORM` maps to a three-channel format
+
+- Location: `mpp-resource-parsers/src/FileTextureStream.cpp:54`
+- Code: `internalFormats["RG16_SNORM"] = GL_RGB16_SNORM;`
+- Observation: a two-channel name (`RG16_SNORM`) is mapped to the three-channel
+  `GL_RGB16_SNORM`. Same surrounding pattern as BD-1 (`RG8_SNORM → GL_RG8_SNORM`,
+  `RG16 → GL_RG16`, `RG16F → GL_RG16F`). This one was **not** pre-flagged in the
+  spec; it surfaced during the M01 inventory.
+- Status: **candidate, newly observed.** Same handling as BD-1: investigate real
+  usage, then decide parity vs. approved deviation. Do not silently correct.
+
+## Approved compatibility exceptions
+
+_None yet._ Any header that cannot be preserved exactly (e.g. a GL-dependent
+public declaration that must change) must be added here with: the header, the
+change, the reason, and explicit approval — before it is treated as an accepted
+exception at the source-compatibility seam.
+
+## Deviation-tracking convention
+
+For each future deviation record:
+
+| Field | Meaning |
+| --- | --- |
+| ID | `BD-n` (baseline defect) or `EX-n` (approved exception) |
+| Location | file:line / header |
+| Reference behaviour | what frozen MPP does |
+| VPP behaviour | what VPP will do |
+| Justification | why the deviation is acceptable |
+| Approval | who approved, and where (issue/PR link) |
+| Test | the observable-behaviour test that pins the chosen behaviour |
