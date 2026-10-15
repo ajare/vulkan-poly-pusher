@@ -147,6 +147,7 @@ python3 tests/compare_triangle.py build/mpp-triangle.ppm --reference
   benchmarks, GPU timings or frame-time distributions.
 - **Windows: no runner available, unverified.** Reliable compositor
   minimize/restore remains unqualified as documented in #4; no new claim here.
-  Textures/depth, the complete Basics scene, and remaining #97 comparison gates
-  are not delivered by this ticket. Missing platform evidence blocks **milestone
+  Textures/depth and the complete Basics scene are not delivered by this ticket.
+  The subsequent [#97 comparison closeout](M01-triangle-comparison.md) records
+  the direct paired-image checks and whole-#5 evidence. Missing platform evidence blocks **milestone
   qualification**, not closure of this explicitly scoped Linux-verified slice.

@@ -70,6 +70,14 @@ Mesh draws integrated with the two-context swapchain, immutable per-draw uniform
 queued/in-flight resource lifetime and update safety, minimal camera/transforms,
 shared frozen-MPP/VPP pixel checks and platform qualification gaps.
 
+## Milestone 1 (ticket #97 / #5 closeout) — paired triangle evidence
+
+[`M01-triangle-comparison.md`](M01-triangle-comparison.md) records direct paired
+frozen-MPP/VPP comparisons at all three shared capture frames, fixed tolerance
+reasoning, comparison-oracle negative controls, current regression/validation
+results, dependencies/subset and the whole authored-triangle acceptance mapping.
+The #5 slice is complete; Windows/compositor gaps still block M01 qualification.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
@@ -106,18 +114,19 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | VPP CPU assets on Windows | ⛔ **Unverified — no Windows runner** |
 | **Windows reference build + smoke** | ⛔ **BLOCKED — no Windows runner available** |
 | **Khronos Vulkan validation layer installed** | ✅ **Installed + verified loadable** (`VK_LAYER_KHRONOS_validation`, Vulkan 1.4.341) |
-| **VPP Vulkan / sync-validation results** | ✅ Clear/resize/shutdown + geometry upload/replace/destroy-in-flight + program/pipeline realization/rebuild on RADV + lavapipe, zero diagnostics (#4, #94, #95) |
+| **VPP Vulkan / sync-validation results** | ✅ Clear/resize/shutdown + geometry upload/replace/destroy-in-flight + program/pipeline realization/rebuild + public triangle drawing/lifetimes on RADV + lavapipe, zero diagnostics (#4, #94–#97) |
 | Shared frozen-MPP/VPP clear captures | ✅ Both resolutions, maximum difference 0/255 (#4) |
 | Geometry upload verification | ✅ Byte-exact diagnostic readback across update/replacement/reload paths (#94) |
 | Program/material realization | ✅ Native pipelines/descriptors; uniform values verified per frame context; runtime rebuilds (#95) |
 | Public triangle drawing/capture | ✅ Shared MPP/VPP analytic colour/orientation/transform checks; resize, updates and live-scene destruction, zero validation diagnostics on RADV + lavapipe (#96) |
+| Paired frozen-MPP/VPP triangle captures | ✅ All three shared frames, max difference 1/255 on RADV + lavapipe; fixed 2/255 interior / 1/255 background limits (#97) |
 | Minimize/restore | ⛔ Intermittent compositor restore failure; optional scenario retains failing assertion (#4) |
 
 Per spec #1, **missing Windows evidence blocks milestone sign-off** and is reported
 here rather than treated as a pass. See
 [M01-smoke-evidence.md](M01-smoke-evidence.md) for the exact gap and how to close it.
 
-> **Validation scope:** #4 and #93–#96 qualify only their documented delivered
+> **Validation scope:** #4 and #93–#97 qualify only their documented delivered
 > subsets, not textures, depth, full scenes or complete applications. Frozen MPP
 > is OpenGL and is compared through a separately built shared client, not Vulkan
 > validation. Windows and compositor qualification gaps remain open.

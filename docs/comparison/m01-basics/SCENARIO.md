@@ -5,7 +5,7 @@ a frozen-MPP client and the equivalent VPP client, so the delivered rendering
 capabilities can be evaluated on identical content. This file is the **contract**
 for the Milestone 1 "Basics" scene.
 
-> Status: **CPU portion (#3), clear/present (#4), and public triangle (#96) runnable.**
+> Status: **CPU portion (#3), clear/present (#4), and paired public triangle (#96–#97) runnable.**
 > `tools/AssetValidate.cpp` validates assets in both libraries without a context;
 > `tools/ClearPresent.cpp` exercises the original startup/window sequence and
 > compares initial/resized clear captures. The textured-geometry portion below is
@@ -85,9 +85,9 @@ variants named `Basics.Triangle`, selected through the backend's resource root.
 The VPP body ports clip depth while retaining the same geometry and authoring
 tokens. CPU regressions load the VPP file stream, compile it at runtime and
 validate reflected attributes, uniforms and descriptors. Programmatic edits and
-negative cases exercise the same public stream seam. This does **not** yet draw
-the triangle or claim visual equivalence; #95–#97 supply realization, drawing and
-paired captures. See [`../../migration/M01-shader-compilation.md`](../../migration/M01-shader-compilation.md).
+negative cases exercise the same public stream seam. This fixture alone does
+**not** draw the triangle; the delivered #95–#97 portions below supply
+realization, drawing and paired captures. See [`../../migration/M01-shader-compilation.md`](../../migration/M01-shader-compilation.md).
 
 ## Delivered geometry-upload portion (#94)
 
@@ -134,6 +134,57 @@ lavapipe pass with zero Vulkan/synchronization-validation diagnostics; the froze
 MPP client passes the shared pixel checks.
 See [`../../migration/M01-triangle-draw.md`](../../migration/M01-triangle-draw.md)
 for commands, the frozen-GL binding adapter, exact subset and evidence.
+
+## Delivered paired triangle comparison (#97)
+
+The shared client above is the delivered **coloured triangle comparison scene**,
+not the still-pending textured/depth scene. No second geometry or logical material
+is generated for either backend. Each shared capture logs its zero-based frame,
+pixel dimensions, scene variant, RGB8 encoding and top-left origin.
+
+| Frame | Size | Scene | Expected projected vertex positions (top-left coordinates) |
+| --- | --- | --- | --- |
+| 19 | 320×240 | One triangle, white material TINT | red (40,198), green (280,198), blue (136,30) |
+| 29 | 400×280 | Same triangle after resize | red (50,231), green (350,231), blue (170,35) |
+| 47 | 400×280 | Two triangles, x offsets −0.5/+0.5, scale 0.5 | same orientation; left TINT (1,.25,.25,1), right (.25,1,1,1) |
+
+Positions are projected vertex locations, not pixel-centre sampling locations.
+Analytic interior interpolation verifies the colours near each vertex as well as
+across the triangle, so a flip/mirror or swapped attributes cannot pass.
+Camera is `(0,0,.25)` facing −Z with +Y up, identity projection, no animation or
+random seed; clear is `(.05,.075,.1,1)`. No textures, depth, culling or blending
+are claimed. The shader variants differ only in clip-depth conversion.
+
+Both capture adapters write binary P6 **top-down RGB8** (no alpha, metadata or
+colour-profile transform). Linear authored colours are quantized to UNORM bytes,
+not sRGB encoded: frozen GL uses its ordinary non-sRGB-converting back buffer;
+VPP uses a UNORM swapchain. The GL bottom-up readback is row-reversed exactly
+once; VPP readback already uses the top-left convention. Captures are requested
+after drawing and before that numbered `show`; VPP reads the submitted image
+before presentation. Frames are numbered from zero, excluding later VPP-only
+lifetime probes.
+
+```sh
+python3 tests/compare_triangle.py build/mpp-triangle.ppm --against build/97-radv.ppm
+python3 tests/compare_triangle.py build/mpp-triangle.ppm --against build/97-lvp.ppm
+```
+
+The comparator checks **both** images analytically first, then compares paired
+channels directly, retaining 2/255 interior and 1/255 background limits (not
+adding the two analytic error budgets). RGB8 rounding contributes up to half a
+code value per capture; interpolation/subpixel precision and final quantization
+justify at most two interior code values, while constant clear needs only one.
+The unchanged 0.02 barycentric edge band excludes raster-coverage ambiguity, not
+colour errors in the interior. This is not a silhouette/pixel-identical test.
+No tolerance was widened and no reference image was updated. The frozen client
+is rerun from the pinned unchanged source; captured images are run artifacts,
+not replacement golden assets. CPU-only negative controls reject mirrored,
+flipped, missing or wrongly tinted geometry, swapped RGB attributes, malformed
+captures, and over-budget analytic/paired differences.
+
+See [`../../migration/M01-triangle-comparison.md`](../../migration/M01-triangle-comparison.md)
+for paired measurements, reproducible commands, whole-#5 acceptance mapping and
+remaining milestone qualification gaps.
 
 ## Blocked on
 

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Observable M01 triangle pixels: top-down RGB8, analytic barycentric colours.
+"""M01 triangle: top-down RGB8 analytic and paired frozen-MPP/VPP checks.
 
-Ignore a 0.02 barycentric band at edges (raster coverage differs by backend).
-Interior channels must be within 2/255; background within 1/255. The expected
-vertices come from the shared authored asset, not from Vulkan internals.
+Fixed tolerances: 2/255 interior, 1/255 background; exclude only the same
+0.02 barycentric edge band for both checks. Never regenerate a reference here.
 """
+import argparse
 from pathlib import Path
-import sys
 
 
 def image(path):
@@ -19,20 +18,19 @@ def image(path):
     return w, h, pixels
 
 
-def verify(path, size, split=False, clear=False):
-    w, h, pixels = image(path)
-    assert (w, h) == size, (path, w, h, size)
+def samples(size, split=False, clear=False):
+    """Yield non-edge (byte offset, expected RGB8, tolerance, draw index)."""
+    w, h = size
     root = Path(__file__).resolve().parents[1]
     vertices = [list(map(float, line.split())) for line in
                 (root / 'docs/comparison/m01-basics/assets/Triangle.vertices').read_text().splitlines()]
     draws = [] if clear else ([(-0.5, 0.5, (1, .25, .25)), (.5, .5, (.25, 1, 1))]
                               if split else [(0, 1, (1, 1, 1))])
     background = (0, 0, 0) if clear else (.05, .075, .1)
-    interior = [0] * len(draws)
     for y in range(h):
         for x in range(w):
             px, py = (x + .5) / w * 2 - 1, 1 - (y + .5) / h * 2
-            expected, tolerance, edge = background, 1, False
+            expected, tolerance, edge, selected = background, 1, False, None
             for draw, (offset, scale, tint) in enumerate(draws):
                 a, b, c = [(v[0] * scale + offset, v[1] * scale) for v in vertices]
                 denominator = (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1])
@@ -43,17 +41,50 @@ def verify(path, size, split=False, clear=False):
                     if min(weights) < .02:
                         edge = True
                     else:
-                        interior[draw] += 1
+                        selected = draw
                         expected = tuple(sum(weights[i] * vertices[i][3+channel] for i in range(3)) * tint[channel]
                                          for channel in range(3))
                         tolerance = 2
-            if edge:
-                continue
-            actual = pixels[(y*w+x)*3:(y*w+x)*3+3]
-            assert all(abs(actual[i] - round(expected[i]*255)) <= tolerance for i in range(3)), (
-                str(path), (x, y), tuple(actual), expected)
+            if not edge:
+                yield (y*w+x)*3, tuple(round(c*255) for c in expected), tolerance, selected
+
+
+def verify(path, size, split=False, clear=False):
+    w, h, pixels = image(path)
+    assert (w, h) == size, (path, w, h, size)
+    interior = [0] * (0 if clear else 2 if split else 1)
+    for offset, expected, tolerance, draw in samples(size, split, clear):
+        if draw is not None:
+            interior[draw] += 1
+        actual = pixels[offset:offset+3]
+        assert all(abs(actual[i] - expected[i]) <= tolerance for i in range(3)), (
+            str(path), (offset//3 % w, offset//3//w), tuple(actual), expected)
     assert all(count > w*h*.04 for count in interior), (path, interior)
     print(f'PASS {path}: {w}x{h}, interior samples={interior}, colour/orientation/background')
+
+
+def compare_pair(reference, candidate, size, split=False):
+    """Check each against the authored scene AND directly against one another."""
+    verify(reference, size, split)
+    verify(candidate, size, split)
+    _, _, expected = image(reference)
+    w, _, actual = image(candidate)
+    maximum = 0
+    checked = 0
+    for offset, _, tolerance, _ in samples(size, split):
+        difference = max(abs(actual[offset+i] - expected[offset+i]) for i in range(3))
+        assert difference <= tolerance, (
+            str(reference), str(candidate), (offset//3 % w, offset//3//w), difference, tolerance)
+        maximum = max(maximum, difference)
+        checked += 1
+    print(f'PASS paired {reference} / {candidate}: samples={checked}, max channel difference={maximum}/255')
+
+
+def compare_bundles(reference, candidate):
+    for suffix, size, split in (('.initial.ppm', (320, 240), False),
+                                ('.resized.ppm', (400, 280), False),
+                                ('', (400, 280), True)):
+        compare_pair(reference + suffix, candidate + suffix, size, split)
 
 
 def verify_bundle(path, extended=True):
@@ -71,4 +102,12 @@ def verify_bundle(path, extended=True):
 
 
 if __name__ == '__main__':
-    verify_bundle(sys.argv[1], '--reference' not in sys.argv)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('capture', help='capture bundle base path (frozen MPP with --against)')
+    parser.add_argument('--reference', action='store_true', help='check only shared captures')
+    parser.add_argument('--against', help='VPP bundle to compare directly with frozen MPP')
+    args = parser.parse_args()
+    if args.against:
+        compare_bundles(args.capture, args.against)
+    else:
+        verify_bundle(args.capture, not args.reference)

@@ -149,9 +149,13 @@ int main(int argc, char** argv) {
                 draw(mesh, -0.5f, 0.5f, glm::vec4(1, 0.25f, 0.25f, 1));
                 draw(mesh, 0.5f, 0.5f, glm::vec4(0.25f, 1, 1, 1));
             }
-            if (frame == 19) capture(renderer, window, path + ".initial.ppm");
-            if (frame == 29) capture(renderer, window, path + ".resized.ppm");
-            if (frame == 47) capture(renderer, window, path);
+            if (frame == 19 || frame == 29 || frame == 47) {
+                auto output = path + (frame == 19 ? ".initial.ppm" : frame == 29 ? ".resized.ppm" : "");
+                capture(renderer, window, output);
+                std::cout << "capture=" << output << " frame=" << frame << " size=" << w << 'x' << h
+                          << " origin=top-left encoding=RGB8-linear-UNORM scene="
+                          << (frame == 47 ? "split-tinted" : "single-white-material") << '\n';
+            }
             window.show();
 #ifdef VPP_VULKAN
             // Updates after submit while earlier frames may still read storage.
