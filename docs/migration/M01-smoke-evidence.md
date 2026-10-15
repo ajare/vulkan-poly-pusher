@@ -86,3 +86,15 @@ set `exitCode=1`).
 
 These gaps are reported rather than treated as success, per the ticket:
 "missing infrastructure is reported rather than treated as success."
+
+## Later VPP lifecycle investigation (#92, 2026-10-15)
+
+The historical sections above describe the frozen-reference slice, not current
+VPP rendering coverage. Current minimize/restore findings and commands are in
+[M01-vulkan-clear.md](M01-vulkan-clear.md#92-investigation-and-runnable-manual-check-2026-10-15).
+Scripted Xwayland runs passed on RADV/lavapipe; Wayland consistently failed to
+restore, including an SDL-only probe. No Vulkan validation diagnostics accompanied
+that failure. User-driven restoration, native X11, and Windows remain unverified.
+The new manual scenario requires three real transitions, resumed captures,
+post-restore resize, and window-first in-flight shutdown; a successful human run
+has not yet been recorded. **#92 is open and M01 remains unqualified.**

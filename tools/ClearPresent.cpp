@@ -44,6 +44,86 @@ void capture(RenderSystem& renderer, WindowSDL& window, std::string const& path)
     require(bool(f), "reference capture write failed");
 #endif
 }
+
+void windowState(WindowSDL& window, char const* phase) {
+    int w{}, h{}; SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
+    std::cout << "window phase=" << phase << " ticks=" << SDL_GetTicks()
+              << " flags=0x" << std::hex << SDL_GetWindowFlags(window.getWindow())
+              << std::dec << " pixels=" << w << 'x' << h << std::endl;
+}
+void lifecycleEvents(WindowSDL& window, InputManagerSDL& input) {
+    SDL_PumpEvents();
+    SDL_Event events[64];
+    int count = SDL_PeepEvents(events, 64, SDL_PEEKEVENT,
+                              SDL_EVENT_WINDOW_FIRST, SDL_EVENT_WINDOW_LAST);
+    require(count >= 0, "cannot inspect window events");
+    for (int i = 0; i < count; ++i) {
+        auto const& event = events[i];
+        if (event.window.windowID != SDL_GetWindowID(window.getWindow())) continue;
+        char const* name = nullptr;
+        switch (event.type) {
+        case SDL_EVENT_WINDOW_MINIMIZED: name = "MINIMIZED"; break;
+        case SDL_EVENT_WINDOW_RESTORED: name = "RESTORED"; break;
+        case SDL_EVENT_WINDOW_SHOWN: name = "SHOWN"; break;
+        case SDL_EVENT_WINDOW_HIDDEN: name = "HIDDEN"; break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED: name = "FOCUS_GAINED"; break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST: name = "FOCUS_LOST"; break;
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: name = "PIXEL_SIZE_CHANGED"; break;
+        default: break;
+        }
+        if (name) windowState(window, name);
+    }
+    require(window.processEvents(&input), "window closed before lifecycle check completed");
+}
+// No scripted activation: keep presenting/pumping while the desktop user acts.
+// Each transition must be observed; doing nothing cannot produce a false pass.
+void manualLifecycle(RenderSystem& renderer, WindowSDL& window, InputManagerSDL& input,
+                     std::string const& path) {
+    auto draw = [&] {
+        int w{}, h{}; SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
+        renderer.setDisplay(w, h); renderer.resetViewport();
+        renderer.clearScreen(Colour(0.6f, 0.2f, 0.4f, 1));
+    };
+    for (int transition = 0; transition < 3; ++transition) {
+        for (bool minimized : {true, false}) {
+            std::cout << "ACTION " << transition + 1 << "/3: "
+                      << (minimized ? "Minimize using the desktop window menu."
+                                    : "Restore using the dock/overview/window switcher.")
+                      << " (30 seconds)" << std::endl;
+            auto deadline = SDL_GetTicks() + 30000;
+            for (;;) {
+                lifecycleEvents(window, input);
+                bool actual = (SDL_GetWindowFlags(window.getWindow()) & SDL_WINDOW_MINIMIZED) != 0;
+                draw(); window.show();
+                if (actual == minimized) break;
+                require(SDL_GetTicks() < deadline, "manual lifecycle transition timed out");
+                SDL_Delay(16);
+            }
+            windowState(window, minimized ? "observed-minimized" : "observed-restored");
+        }
+        // Capture immediately after restore, then again after an actual resize.
+        for (int resized = 0; resized < 2; ++resized) {
+            if (resized) {
+                window.setSize(420 + transition * 20, 300 + transition * 20);
+                require(SDL_SyncWindow(window.getWindow()), "post-restore resize synchronization failed");
+                lifecycleEvents(window, input);
+                int w{}, h{};
+                require(SDL_GetWindowSize(window.getWindow(), &w, &h), "cannot query resized window");
+                require(w == 420 + transition * 20 && h == 300 + transition * 20,
+                        "post-restore resize not applied");
+            }
+            draw();
+            std::string output = path + ".restore-" + std::to_string(transition) +
+                                 (resized ? ".resized.ppm" : ".ppm");
+            std::filesystem::remove(output);
+            capture(renderer, window, output); window.show();
+            int w{}, h{}; SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
+            verify(output, w, h, Colour(0.6f, 0.2f, 0.4f, 1));
+        }
+        // Submit uncaptured work before the next transition / window-first shutdown.
+        draw(); window.show();
+    }
+}
 }
 int main(int argc, char** argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) { std::cerr << SDL_GetError() << '\n'; return 1; }
@@ -51,7 +131,12 @@ int main(int argc, char** argv) {
     try {
         std::string path = argc > 1 ? argv[1] : "clear.ppm";
         bool minimize = argc > 2 && std::string(argv[2]) == "--minimize";
-        int cycles = minimize ? 1 : 3;
+        bool manual = argc > 2 && std::string(argv[2]) == "--manual-minimize";
+        require(argc <= 3 && (argc <= 2 || minimize || manual), "expected [capture.ppm] [--minimize|--manual-minimize]");
+        int cycles = (minimize || manual) ? 1 : 3;
+        std::cout << "SDL driver=" << SDL_GetCurrentVideoDriver()
+                  << " session=" << (SDL_getenv("XDG_SESSION_TYPE") ? SDL_getenv("XDG_SESSION_TYPE") : "unknown")
+                  << std::endl;
         Logger logger;
 #ifdef VPP_VULKAN
         bool missingWindow = false;
@@ -103,15 +188,19 @@ int main(int argc, char** argv) {
                 if (minimize && frame == 40) {
                     require(SDL_MinimizeWindow(window.getWindow()), "minimize request failed");
                     require(SDL_SyncWindow(window.getWindow()), "minimize synchronization failed");
-                    SDL_Delay(100); window.processEvents(&input);
+                    SDL_Delay(100); lifecycleEvents(window, input);
+                    windowState(window, "after-minimize");
+                    require(SDL_GetWindowFlags(window.getWindow()) & SDL_WINDOW_MINIMIZED,
+                            "minimize request did not minimize window");
                 }
                 if (minimize && frame == 42) {
                     require(SDL_RestoreWindow(window.getWindow()), "restore request failed");
                     require(SDL_RaiseWindow(window.getWindow()), "raise request failed");
-                    SDL_SyncWindow(window.getWindow());
+                    std::cout << "restore sync=" << SDL_SyncWindow(window.getWindow()) << std::endl;
                     SDL_Delay(100);
                     for (int attempt = 0; attempt < 40; ++attempt) {
-                        window.processEvents(&input);
+                        lifecycleEvents(window, input);
+                        windowState(window, "restore-wait");
                         if (!(SDL_GetWindowFlags(window.getWindow()) & SDL_WINDOW_MINIMIZED)) break;
                         SDL_RestoreWindow(window.getWindow());
                         SDL_RaiseWindow(window.getWindow());
@@ -135,8 +224,9 @@ int main(int argc, char** argv) {
                 if (capturing) verify(output, w, h, clear);
                 SDL_Delay(1);
             }
+            if (manual) manualLifecycle(*renderer, window, input, path);
 #ifdef VPP_VULKAN
-            if (cycle % 2) {
+            if (cycle % 2 || manual) {
                 window.destroy();
                 bool stale = false;
                 try { renderer->clearScreen(Colour::White); } catch (std::runtime_error const&) { stale = true; }
@@ -147,7 +237,9 @@ int main(int argc, char** argv) {
         }
         auto ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
         std::cout << "PASS " << cycles*60 << " frames, paired clear captures, resize, " << cycles << " lifecycle cycles"
-                  << (minimize ? ", minimize/restore" : "") << "; elapsed_ms=" << ms << '\n';
+                  << (minimize ? ", scripted minimize/restore" : "")
+                  << (manual ? ", 3 manual minimize/restore transitions with paired restore/resize captures" : "")
+                  << "; elapsed_ms=" << ms << '\n';
     } catch (std::exception const& e) { std::cerr << e.what() << '\n'; result = 1; }
     SDL_Quit(); return result;
 }

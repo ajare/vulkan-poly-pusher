@@ -140,3 +140,80 @@ Vulkan SDK; no Windows build/run has been observed.
   Windows, reliable minimize/restore, and the remaining M01 rendering features
   block milestone qualification. Closing #4 records delivery of this clear slice,
   not milestone completion.
+
+## #92 investigation and runnable manual check (2026-10-15)
+
+**Still open; no renderer fix or lifecycle qualification is claimed.** The
+intermittent X11 failure was not reproduced in this investigation. Session type
+was Wayland (GNOME); SDL `x11` here means **Xwayland**, not native X11.
+
+Observed with the unchanged SDL pin, RADV STRIX_HALO and required Vulkan/sync
+validation:
+
+- Original scripted `--minimize`: Xwayland **11/11 pass**; Wayland **3/3 fail**
+  with `window manager did not restore window`.
+- A temporary SDL-only probe (create resizable window, pump 500 ms, minimize,
+  pump 500 ms, restore once, raise once, pump 2500 ms, assert not MINIMIZED)
+  reproduced Wayland **3/3 fail**, Xwayland **3/3 pass**. No Vulkan, renderer,
+  or `WindowSDL` was involved. Removing repeated restore/raise requests did
+  not remove the failure.
+- `WAYLAND_DEBUG=1` on that probe showed `set_minimized`, then an activation
+  token request/commit and `activate`, but no input-serial/source-surface
+  attached to the activation request and no subsequent toplevel configure.
+  Token values are intentionally not recorded here. This supports an
+  activation-context/policy explanation, not proof of a compositor defect.
+- Pinned SDL `Wayland_RestoreWindow` returns without doing anything for a
+  solely minimized window; xdg-shell has no unset-minimize request.
+  `Wayland_RaiseWindow` uses xdg-activation and can supply input context only
+  when available. `SDL_SyncWindow` returning true is **not** proof of restore.
+- With the diagnostic changes: Xwayland RADV **5/5 pass**, lavapipe **3/3
+  pass**; Wayland RADV **5/5 fail** with the same assertion. Failure logs show
+  MINIMIZED and FOCUS_LOST, unchanged 400x280 pixels, successful sync, and flags
+  `0x10000060` throughout the restore wait. Successful Xwayland logs show
+  RESTORED/FOCUS_GAINED and flags `0x10000220`.
+- No Vulkan or synchronization validation warnings/errors in those runs.
+  Release build and default CTest **8/8 pass**; default CTest still does not
+  exercise minimization. Manual mode with no desktop action fails after its
+  30-second transition deadline, rather than passing without a transition.
+
+The confirmed harness limitation is treating an asynchronous activation request
+as if it guaranteed desktop permission to restore. We retain the scripted
+failure rather than ignore MINIMIZED, force visibility via hide/show, or change
+renderer behavior. Whether real desktop restoration fails remains **unverified**.
+Native X11 and Windows were unavailable. Earlier intermittent Xwayland failures
+remain unexplained; passing runs above do not erase that evidence.
+
+### Reproduction and next required evidence
+
+The wrapper now honors an explicitly set `SDL_VIDEODRIVER` (default remains
+`x11`), streams prompts, and preserves validation output on timeout. The client
+logs actual SDL driver/session, relevant window events, flags, pixel dimensions,
+and restore synchronization results. Use distinct output paths per run:
+
+```sh
+SDL_VIDEODRIVER=wayland python3 tests/run_clear_validation.py \
+  build/bin/VppClearPresent build/wayland-min.ppm --minimize
+SDL_VIDEODRIVER=x11 python3 tests/run_clear_validation.py \
+  build/bin/VppClearPresent build/xwayland-min.ppm --minimize
+
+# Requires a person at the desktop; no source edits or debugger pauses.
+bash tests/manual_clear_lifecycle.sh wayland build
+bash tests/manual_clear_lifecycle.sh x11 build
+```
+
+`--manual-minimize` first runs the ordinary clear/resize scenario, then requests
+**three user-driven minimize/restore transitions**. Each action has 30 seconds;
+the event/render loop remains active. It never calls minimize/restore/raise on
+the user's behalf. After each observed restore it verifies a fresh capture,
+resizes through `WindowSDL::setSize`, verifies the actual new size and another
+fresh capture, then submits uncaptured work. Vulkan teardown is window-first
+with the renderer still alive, exercising in-flight retirement. The shell helper
+also records human observations and desktop identity alongside uniquely named
+captures/logs. The success path still requires an actual human run; only its
+no-action failure path has been exercised here.
+
+Next: run that manual check with immediate and delayed desktop restoration on
+Wayland and Xwayland. Distinguish remaining hidden from visibly restored but
+stalled. If flags remain MINIMIZED after visible restoration, collect native
+state/event evidence before changing SDL or renderer behavior. #92 and M01
+qualification remain blocked on that evidence and the other platform gates.
