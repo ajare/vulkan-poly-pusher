@@ -22,6 +22,10 @@ void RenderSystem::initialise() {
     if (!mVulkanWindow) mVulkanWindow = detail::associatedWindow();
     mVulkanWindow->initialise();
     mCaps = {}; // No GL context; unavailable rendering features stay false/zero.
+    // Truthful native vertex-input limits for the delivered geometry-upload
+    // subset; every other rendering capability remains unavailable.
+    mCaps.maxVertexAttributes = mVulkanWindow->maxVertexInputAttributes();
+    mCaps.maxVertexAttributeStride = mVulkanWindow->maxVertexInputBindingStride();
 }
 size_t RenderSystem::getWindowWidth() const { return mWindowWidth; }
 size_t RenderSystem::getWindowHeight() const { return mWindowHeight; }

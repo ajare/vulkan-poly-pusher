@@ -46,6 +46,14 @@ results, and remaining platform/compositor qualification gaps.
 private glslang/SPIRV-Reflect toolchain, runtime program-stream compilation,
 backend resource-root variants, reflected bindings, CPU regressions and subset.
 
+## Milestone 1 (ticket #94) — Vulkan geometry upload
+
+[`M01-geometry-upload.md`](M01-geometry-upload.md) records native vertex/index
+buffer realization through the frozen Mesh/VertexBuffer APIs: staged uploads,
+completion-based deferred destruction across the frame contexts, boundary
+vertex-format translation, diagnostic readback, CPU/GPU regressions and the
+explicit remaining subset.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
@@ -57,9 +65,11 @@ All eight original module targets have explicit CPU subsets; ProgramBuilder and
 `VppAssetValidate` run without a graphics context. VPP now also supports **native
 Vulkan window initialization, clear, presentation and diagnostic clear capture**
 through the existing public window sequence, plus **runtime Vulkan shader
-compilation and dependency-neutral SPIR-V reflection** through program streams.
-Uploads, GPU program/material realization, geometry and depth remain for the rest
-of Milestone 1.
+compilation and dependency-neutral SPIR-V reflection** through program streams,
+plus **native vertex/index buffer upload through the Mesh/VertexBuffer APIs**
+with staged uploads, deferred destruction and diagnostic readback.
+Drawing, GPU program/material realization, textures and depth remain for the
+rest of Milestone 1.
 Until a given VPP capability exists, invoking it must raise a clear
 "not implemented" diagnostic rather than return success or draw nothing silently.
 This rule is a standing gate for every subsequent milestone, not just M01.
@@ -77,8 +87,9 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | VPP CPU assets on Windows | ⛔ **Unverified — no Windows runner** |
 | **Windows reference build + smoke** | ⛔ **BLOCKED — no Windows runner available** |
 | **Khronos Vulkan validation layer installed** | ✅ **Installed + verified loadable** (`VK_LAYER_KHRONOS_validation`, Vulkan 1.4.341) |
-| **VPP Vulkan / sync-validation results** | ✅ Clear/resize/shutdown on RADV + lavapipe, zero diagnostics (#4) |
+| **VPP Vulkan / sync-validation results** | ✅ Clear/resize/shutdown + geometry upload/replace/destroy-in-flight on RADV + lavapipe, zero diagnostics (#4, #94) |
 | Shared frozen-MPP/VPP clear captures | ✅ Both resolutions, maximum difference 0/255 (#4) |
+| Geometry upload verification | ✅ Byte-exact diagnostic readback across update/replacement/reload paths (#94) |
 | Minimize/restore | ⛔ Intermittent compositor restore failure; optional scenario retains failing assertion (#4) |
 
 Per spec #1, **missing Windows evidence blocks milestone sign-off** and is reported

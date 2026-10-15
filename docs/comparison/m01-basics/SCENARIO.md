@@ -89,6 +89,18 @@ negative cases exercise the same public stream seam. This does **not** yet draw
 the triangle or claim visual equivalence; #95–#97 supply realization, drawing and
 paired captures. See [`../../migration/M01-shader-compilation.md`](../../migration/M01-shader-compilation.md).
 
+## Delivered geometry-upload portion (#94)
+
+The authored triangle layout from the shader fixture (position3 float +
+colour4 float, stride 28) uploads through the public Mesh/VertexBuffer APIs
+into native vertex/index buffers: staged uploads, completion-based deferred
+destruction across the frame contexts, and byte-exact diagnostic readback via
+additive `mpp/GeometryDiagnostics.h`. `tools/GeometryUpload.cpp` exercises
+initial/full/ranged/grown uploads, reloads, storage-type switches and
+in-flight destruction under mandatory Khronos + synchronization validation.
+This verifies upload contents only; it does **not** yet draw the triangle.
+See [`../../migration/M01-geometry-upload.md`](../../migration/M01-geometry-upload.md).
+
 ## Blocked on
 
 - Remaining VPP rendering slice (M1) for textured geometry/depth.

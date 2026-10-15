@@ -45,11 +45,17 @@ bool binaryRoundTrip(std::string* failure) {
 }
 
 bool shaderCompilationTests(std::string* failure);
+#ifdef VPP_GEOMETRY_TESTS
+bool geometryTranslationTests(std::string* failure);
+#endif
 
 int main() {
     struct Test { char const* name; bool (*run)(std::string*); };
     Test tests[] = {
         {"Vulkan runtime shader compilation/reflection", shaderCompilationTests},
+#ifdef VPP_GEOMETRY_TESTS
+        {"Vulkan vertex-format boundary translation", geometryTranslationTests},
+#endif
         {"RSE5 binary round trip", binaryRoundTrip},
         {"diagnostics", mpp::runDiagnosticTests},
         {"graph topology", mpp::runRenderGraphTopologyTests},

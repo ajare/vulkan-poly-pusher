@@ -48,6 +48,21 @@ investigation/approval items only. **No code was changed.**
 - BD-1 and BD-2 were subsequently confirmed by live CPU client comparison in #3;
   VPP preserves both original mappings. See `M01-cpu-assets.md`.
 
+### BD-4 — `Mesh::setIndexData(vector, indexWidth)` computes element count with `>> 8`
+
+- Location: `mpp/src/Mesh.cpp` (`setIndexData(std::vector<uint8_t> const&, size_t)`)
+- Observation: the reference computes `numIndices = indexData.size() / (indexWidth >> 8)`.
+  `indexWidth` is in bits (16 or 32; the sibling overload uses `>> 3` for byte
+  conversion), so `indexWidth >> 8` is zero for every supported width — a
+  division by zero. No compiled MPP code path reaches this overload with a
+  valid width; it is a latent baseline defect.
+- VPP behaviour: the native implementation uses the intended `>> 3` conversion
+  and rejects non-byte-aligned widths actionably.
+- Status: **candidate; VPP implements the intended behaviour.** Recorded per
+  policy; not authorized to change the frozen reference. Pinning test: the
+  geometry-upload scenario loads a 16-bit indexed mesh through this overload's
+  semantics (`tools/GeometryUpload.cpp`).
+
 ## Approved compatibility exceptions
 
 _None yet._ Any header that cannot be preserved exactly (e.g. a GL-dependent

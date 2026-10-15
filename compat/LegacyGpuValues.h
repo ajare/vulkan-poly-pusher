@@ -22,6 +22,22 @@ inline constexpr uint32_t GL_R8I = 0x8231;
 inline constexpr uint32_t GL_R8UI = 0x8232;
 inline constexpr uint32_t GL_R8_SNORM = 0x8F94;
 inline constexpr uint32_t GL_REPEAT = 0x2901;
+// Vertex attribute data-type vocabulary (retained numeric meanings).
+inline constexpr uint32_t GL_BYTE = 0x1400;
+inline constexpr uint32_t GL_UNSIGNED_BYTE = 0x1401;
+inline constexpr uint32_t GL_SHORT = 0x1402;
+inline constexpr uint32_t GL_UNSIGNED_SHORT = 0x1403;
+inline constexpr uint32_t GL_INT = 0x1404;
+inline constexpr uint32_t GL_UNSIGNED_INT = 0x1405;
+inline constexpr uint32_t GL_FLOAT = 0x1406;
+inline constexpr uint32_t GL_DOUBLE = 0x140A;
+inline constexpr uint32_t GL_HALF_FLOAT = 0x140B;
+inline constexpr uint32_t GL_INT_2_10_10_10_REV = 0x8D9F;
+inline constexpr uint32_t GL_UNSIGNED_INT_2_10_10_10_REV = 0x8368;
+// Primitive topology vocabulary (retained numeric meanings).
+inline constexpr uint32_t GL_POINTS = 0x0000;
+inline constexpr uint32_t GL_LINES = 0x0001;
+inline constexpr uint32_t GL_TRIANGLES = 0x0004;
 inline constexpr uint32_t GL_RG16 = 0x822C;
 inline constexpr uint32_t GL_RG16F = 0x822F;
 inline constexpr uint32_t GL_RG16I = 0x8239;
