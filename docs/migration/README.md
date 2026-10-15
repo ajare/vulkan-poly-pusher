@@ -63,6 +63,13 @@ layouts, descriptor-backed per-frame-context uniform storage for material
 values, runtime shader rebuilds, the delivered ResourceManager subset, and the
 explicit remaining subset.
 
+## Milestone 1 (ticket #96) — public triangle drawing
+
+[`M01-triangle-draw.md`](M01-triangle-draw.md) records public Program/material/
+Mesh draws integrated with the two-context swapchain, immutable per-draw uniforms,
+queued/in-flight resource lifetime and update safety, minimal camera/transforms,
+shared frozen-MPP/VPP pixel checks and platform qualification gaps.
+
 ## Supported intermediate subset (explicit)
 
 Early milestones expose **only their documented supported subset**. Not-yet-delivered
@@ -79,9 +86,9 @@ plus **native vertex/index buffer upload through the Mesh/VertexBuffer APIs**
 with staged uploads, deferred destruction and diagnostic readback,
 plus **program/material realization as native pipelines and descriptor-backed
 per-frame-context uniform storage** through the Program/BasicMaterial/
-ResourceManager APIs.
-Drawing, textures and depth remain for the
-rest of Milestone 1.
+ResourceManager APIs, plus **public coloured-triangle draws and capture** with
+minimal camera/model transforms. Textures, depth and full scene rendering remain
+for the rest of Milestone 1.
 Until a given VPP capability exists, invoking it must raise a clear
 "not implemented" diagnostic rather than return success or draw nothing silently.
 This rule is a standing gate for every subsequent milestone, not just M01.
@@ -103,13 +110,14 @@ This rule is a standing gate for every subsequent milestone, not just M01.
 | Shared frozen-MPP/VPP clear captures | ✅ Both resolutions, maximum difference 0/255 (#4) |
 | Geometry upload verification | ✅ Byte-exact diagnostic readback across update/replacement/reload paths (#94) |
 | Program/material realization | ✅ Native pipelines/descriptors; uniform values verified per frame context; runtime rebuilds (#95) |
+| Public triangle drawing/capture | ✅ Shared MPP/VPP analytic colour/orientation/transform checks; resize, updates and live-scene destruction, zero validation diagnostics on RADV + lavapipe (#96) |
 | Minimize/restore | ⛔ Intermittent compositor restore failure; optional scenario retains failing assertion (#4) |
 
 Per spec #1, **missing Windows evidence blocks milestone sign-off** and is reported
 here rather than treated as a pass. See
 [M01-smoke-evidence.md](M01-smoke-evidence.md) for the exact gap and how to close it.
 
-> **Validation scope:** #4 produces actual Vulkan and synchronization-validation
-> evidence for the delivered clear subset only. It does not qualify unimplemented
-> uploads, shaders, geometry, depth or complete applications. Frozen MPP is OpenGL
-> and is compared through a separately built shared client, not Vulkan validation.
+> **Validation scope:** #4 and #93–#96 qualify only their documented delivered
+> subsets, not textures, depth, full scenes or complete applications. Frozen MPP
+> is OpenGL and is compared through a separately built shared client, not Vulkan
+> validation. Windows and compositor qualification gaps remain open.

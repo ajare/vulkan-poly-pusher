@@ -9,6 +9,7 @@ struct SDL_Window;
 namespace mpp::detail {
 class GeometryStore;
 class PipelineStore;
+struct Draw;
 class _MPPAPI VulkanWindow {
     struct Impl;
     std::unique_ptr<Impl> impl;
@@ -20,6 +21,7 @@ public:
     void clear(Colour const&);
     void present();
     void capture(std::string const&);
+    void enqueue(Draw draw);
     BackendCapabilities capabilities() const;
     // Native geometry upload store (vertex/index buffers). Fails when the
     // renderer is not initialized or its window was destroyed.

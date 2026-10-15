@@ -62,10 +62,15 @@ public:
     // Native handle of a live buffer for descriptor writes. Backend-private;
     // never escapes into public resource identifiers.
     VkBuffer handle(uint32_t id);
+    void validateIndices(uint32_t id, size_t first, size_t count, size_t width, size_t vertexLimit);
 
     // Frame-context hooks driven by the window's presentation loop.
-    void noteFrameSubmit() { ++mSerial; }
-    void noteFrameComplete();
+    uint64_t noteFrameSubmit() { return ++mSerial; }
+    void noteFrameComplete(uint64_t serial);
+
+    // Hold native storage across the interval between public draw and submit.
+    VkBuffer pin(uint32_t id);
+    void unpin(VkBuffer buffer) noexcept;
 
     // Poll completed upload fences (zero timeout) and free finished staging
     // plus retired buffers. Called from presentation and every store operation.
@@ -78,6 +83,9 @@ private:
         VkBufferUsageFlags usage{};
         size_t size{};
         std::string label;
+        // Last uploaded contents, not the caller's mutable CPU array. Enables
+        // queued-draw copy-on-write and safe indexed range validation.
+        std::vector<uint8_t> contents;
     };
     struct Pending {
         uint64_t serial;
@@ -95,7 +103,7 @@ private:
     uint32_t memoryType(uint32_t typeBits, VkMemoryPropertyFlags required, char const* context) const;
     Entry allocate(VkBufferUsageFlags usage, size_t size, std::string label) const;
     void freeEntry(Entry& entry) const noexcept;
-    void stageInto(Entry const& entry, void const* data, size_t size, size_t offset);
+    void stageInto(Entry& entry, void const* data, size_t size, size_t offset);
     Entry& require(uint32_t id, char const* operation);
 
     VkPhysicalDevice mPhysical{};
@@ -109,6 +117,7 @@ private:
     std::map<std::string, uint32_t> mLabels;
     std::deque<Pending> mPending;
     std::vector<Retired> mRetired;
+    std::map<VkBuffer, size_t> mPins;
 };
 
 }

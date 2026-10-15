@@ -5,7 +5,7 @@ a frozen-MPP client and the equivalent VPP client, so the delivered rendering
 capabilities can be evaluated on identical content. This file is the **contract**
 for the Milestone 1 "Basics" scene.
 
-> Status: **CPU portion runnable (#3), shared clear/present prelude runnable (#4).**
+> Status: **CPU portion (#3), clear/present (#4), and public triangle (#96) runnable.**
 > `tools/AssetValidate.cpp` validates assets in both libraries without a context;
 > `tools/ClearPresent.cpp` exercises the original startup/window sequence and
 > compares initial/resized clear captures. The textured-geometry portion below is
@@ -114,11 +114,31 @@ fail explicitly. This verifies realization only; it does **not** yet draw the
 triangle — #96–#97 supply drawing and paired captures.
 See [`../../migration/M01-pipeline-realization.md`](../../migration/M01-pipeline-realization.md).
 
+## Delivered public triangle portion (#96)
+
+`tools/TrianglePresent.cpp` loads `assets/Triangle.vertices` and logical
+`Basics.DrawTriangle` from the backend shader roots, then draws through real
+Program/BasicMaterial/UniformCollection/Mesh APIs. Both frozen-MPP and VPP clients
+capture frame 19 (320×240), frame 29 after resize (400×280), and frame 47 with two
+transformed triangles using different uniforms on one Program. The minimal camera
+uses identity projection and a public authored `TRANSFORM` uniform. The earlier
+`Basics.Triangle` token/reflection fixture remains unchanged.
+
+`tests/compare_triangle.py` checks analytic barycentric colours/orientation and
+background from the same authored geometry: 2/255 interior, 1/255 background,
+fixed 0.02 barycentric edge exclusion. VPP additionally tests indexed draws,
+queued/in-flight updates and destruction, pipeline reloads, clear-after-draw,
+explicit failures, and window destruction with a live scene. All captures use the
+existing capture path; VPP has no private rendering test hook. Linux RADV and
+lavapipe pass with zero Vulkan/synchronization-validation diagnostics; the frozen
+MPP client passes the shared pixel checks.
+See [`../../migration/M01-triangle-draw.md`](../../migration/M01-triangle-draw.md)
+for commands, the frozen-GL binding adapter, exact subset and evidence.
+
 ## Blocked on
 
-- Remaining VPP rendering slice (M1) for textured geometry/depth.
-- Remaining scene capture support: #4 delivers clear-only captures without external
-  screenshot tooling, not full scene or intermediate graph capture.
+- Remaining VPP rendering slice (M1) for textured geometry/depth and full scenes.
+- Full scene/intermediate graph capture; clear and triangle captures are delivered.
 - Windows runner, reliable minimize/restore, and remaining rendering validation
-  for full milestone qualification. Clear/present GPU execution has clean Linux
-  Vulkan/synchronization-validation evidence; later capabilities do not yet.
+  for full milestone qualification. Linux clear, uploads, shader/material and
+  triangle execution have evidence only for their explicit subsets.

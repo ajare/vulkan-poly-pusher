@@ -56,6 +56,7 @@ GeometryStore::Entry GeometryStore::allocate(VkBufferUsageFlags usage, size_t si
     entry.size = size;
     entry.usage = usage;
     entry.label = std::move(label);
+    entry.contents.resize(size);
     VkBufferCreateInfo buffer{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     // Zero-sized MPP buffers still get native storage so IDs stay meaningful.
     buffer.size = std::max<size_t>(1, size);
@@ -85,7 +86,7 @@ GeometryStore::Entry& GeometryStore::require(uint32_t id, char const* operation)
     return it->second;
 }
 
-void GeometryStore::stageInto(Entry const& entry, void const* data, size_t size, size_t offset) {
+void GeometryStore::stageInto(Entry& entry, void const* data, size_t size, size_t offset) {
     if (!size) return;
     if (offset > entry.size || size > entry.size - offset)
         throw std::runtime_error("Staged geometry upload of " + std::to_string(size) + " bytes at offset " +
@@ -119,18 +120,27 @@ void GeometryStore::stageInto(Entry const& entry, void const* data, size_t size,
     VkCommandBufferBeginInfo begin{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     check(vkBeginCommandBuffer(transfer, &begin), "begin upload command");
+    // Updates may follow draws/readbacks on this queue. Order all prior
+    // readers/writers before overwriting storage (including uniform buffers).
+    VkBufferMemoryBarrier writable{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+    writable.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    writable.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    writable.srcQueueFamilyIndex = writable.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    writable.buffer = entry.buffer; writable.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(transfer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 1, &writable, 0, nullptr);
     VkBufferCopy copy{ 0, offset, size };
     vkCmdCopyBuffer(transfer, staging, entry.buffer, 1, &copy);
-    // Make the transfer writes visible to later transfer reads (diagnostic
-    // readback) and to the vertex-input stage once drawing is delivered.
+    // Make uploads visible to later diagnostic reads, vertex/index fetches
+    // and descriptor-backed uniforms in either graphics shader stage.
     VkBufferMemoryBarrier visible{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
     visible.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    visible.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+    visible.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT;
     visible.srcQueueFamilyIndex = visible.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     visible.buffer = entry.buffer;
     visible.size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(transfer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, nullptr, 1, &visible, 0, nullptr);
+        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &visible, 0, nullptr);
     check(vkEndCommandBuffer(transfer), "end upload command");
     VkFenceCreateInfo fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
     VkFence fence{};
@@ -140,6 +150,7 @@ void GeometryStore::stageInto(Entry const& entry, void const* data, size_t size,
     submit.pCommandBuffers = &transfer;
     check(vkQueueSubmit(mQueue, 1, &submit, fence), "submit geometry upload");
     mPending.push_back({ ++mSerial, fence, transfer, staging, stagingMemory });
+    std::memcpy(entry.contents.data() + offset, data, size);
 }
 
 uint32_t GeometryStore::create(VkBufferUsageFlags usage, void const* data, size_t size, std::string label) {
@@ -160,7 +171,16 @@ uint32_t GeometryStore::create(VkBufferUsageFlags usage, void const* data, size_
 
 void GeometryStore::upload(uint32_t id, void const* data, size_t size, size_t offset) {
     reap();
-    stageInto(require(id, "Geometry upload"), data, size, offset);
+    auto& entry = require(id, "Geometry upload");
+    if (offset > entry.size || size > entry.size - offset)
+        throw std::runtime_error("Geometry upload: range exceeds uploaded storage");
+    if (size && mPins.contains(entry.buffer)) {
+        // A queued draw has not been submitted yet: preserve its old contents,
+        // rather than scheduling this write ahead of it on the Vulkan queue.
+        auto contents = entry.contents;
+        std::memcpy(contents.data() + offset, data, size);
+        replace(id, contents.data(), contents.size());
+    } else stageInto(entry, data, size, offset);
 }
 
 void GeometryStore::replace(uint32_t id, void const* data, size_t size) {
@@ -278,6 +298,18 @@ std::vector<uint8_t> GeometryStore::readbackLabel(std::string const& label) {
 
 VkBuffer GeometryStore::handle(uint32_t id) { return require(id, "Geometry handle query").buffer; }
 
+void GeometryStore::validateIndices(uint32_t id, size_t first, size_t count, size_t width, size_t vertexLimit) {
+    auto const& entry = require(id, "Mesh::render index validation");
+    if ((width != 2 && width != 4) || first > entry.size / width || count > entry.size / width - first)
+        throw std::runtime_error("Mesh::render: draw range exceeds index storage");
+    for (size_t i = first; i < first + count; ++i) {
+        uint32_t index{};
+        std::memcpy(&index, entry.contents.data() + i * width, width);
+        if (index >= vertexLimit)
+            throw std::runtime_error("Mesh::render: index references a vertex outside uploaded storage");
+    }
+}
+
 void GeometryStore::requireVertexFormat(VkFormat format, std::string const& context) const {
     VkFormatProperties properties;
     vkGetPhysicalDeviceFormatProperties(mPhysical, format, &properties);
@@ -289,9 +321,23 @@ void GeometryStore::requireVertexFormat(VkFormat format, std::string const& cont
             "; use a float or 32-bit attribute layout");
 }
 
-void GeometryStore::noteFrameComplete() {
-    // The frame fence wait implies every earlier submission on this queue.
-    mCompleted = std::max(mCompleted, mSerial);
+VkBuffer GeometryStore::pin(uint32_t id) {
+    auto buffer = handle(id);
+    ++mPins[buffer];
+    return buffer;
+}
+
+void GeometryStore::unpin(VkBuffer buffer) noexcept {
+    auto it = mPins.find(buffer);
+    if (it == mPins.end()) return;
+    if (--it->second == 0) mPins.erase(it);
+    for (auto& retired : mRetired)
+        if (retired.buffer == buffer) retired.safeAfter = std::max(retired.safeAfter, mSerial);
+}
+
+void GeometryStore::noteFrameComplete(uint64_t serial) {
+    // Only the submission associated with the fence actually waited on.
+    mCompleted = std::max(mCompleted, serial);
     reap();
 }
 
@@ -308,7 +354,7 @@ void GeometryStore::reap() noexcept {
         mPending.pop_front();
     }
     auto remaining = std::remove_if(mRetired.begin(), mRetired.end(), [&](Retired const& retired) {
-        if (retired.safeAfter > mCompleted) return false;
+        if (retired.safeAfter > mCompleted || mPins.contains(retired.buffer)) return false;
         vkDestroyBuffer(mDevice, retired.buffer, nullptr);
         vkFreeMemory(mDevice, retired.memory, nullptr);
         return true;

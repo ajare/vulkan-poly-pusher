@@ -60,8 +60,8 @@ VkRenderPass PipelineStore::renderPass(VkFormat format) {
     colour.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colour.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colour.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colour.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colour.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colour.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colour.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentReference reference{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -156,6 +156,10 @@ uint32_t PipelineStore::realizeProgram(std::shared_ptr<CompiledProgram const> co
     Entry entry;
     entry.compiled = std::move(compiled);
     entry.label = label;
+    entry.format = mColourFormat;
+    entry.bindings = vertexInput.bindings;
+    entry.attributes = vertexInput.attributes;
+    entry.topology = vertexInput.topology;
     entry.members = std::move(members);
     try {
         VkShaderModuleCreateInfo module{ VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
@@ -339,16 +343,72 @@ void PipelineStore::select(uint32_t id) {
     mSelected = id;
 }
 
-void PipelineStore::noteFrameComplete() {
-    // The frame fence wait retires every earlier submission on this queue.
-    mCompleted = std::max(mCompleted, mSerial);
+void PipelineStore::noteFrameComplete(uint64_t serial) {
+    mCompleted = std::max(mCompleted, serial);
     reap();
+}
+
+void PipelineStore::validateGeometry(uint32_t id,
+    std::vector<VkVertexInputBindingDescription> const& bindings,
+    std::vector<VkVertexInputAttributeDescription> const& attributes, VkPrimitiveTopology topology) const {
+    auto const& entry = require(id, "Mesh::render");
+    bool matches = entry.topology == topology && entry.bindings.size() == bindings.size() &&
+        entry.attributes.size() == attributes.size();
+    for (size_t i = 0; matches && i < bindings.size(); ++i)
+        matches = bindings[i].binding == entry.bindings[i].binding && bindings[i].stride == entry.bindings[i].stride;
+    for (auto const& expected : entry.attributes) {
+        auto it = std::find_if(attributes.begin(), attributes.end(), [&](auto const& a) { return a.location == expected.location; });
+        matches &= it != attributes.end() && it->binding == expected.binding && it->format == expected.format && it->offset == expected.offset;
+    }
+    if (!matches) throw std::runtime_error("Mesh::render: geometry layout/topology does not match Program '" + entry.label + "'");
+    if (entry.format != mColourFormat)
+        throw std::runtime_error("Mesh::render: reload Program '" + entry.label + "' after a surface format change");
+}
+
+PipelineStore::DrawBinding PipelineStore::prepareDraw(uint32_t id) {
+    auto& entry = require(id, "Mesh::render");
+    DrawBinding draw;
+    draw.pipeline = entry.pipeline; draw.layout = entry.pipelineLayout; draw.format = entry.format;
+    try {
+        if (!entry.uniformImage.empty()) {
+            draw.uniformBuffer = mBuffers->create(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                entry.uniformImage.data(), entry.uniformImage.size(), "Draw uniforms: " + entry.label);
+            VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1};
+            VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pool.maxSets = 1; pool.poolSizeCount = 1; pool.pPoolSizes = &size;
+            check(vkCreateDescriptorPool(mDevice, &pool, nullptr, &draw.pool), "create draw descriptor pool");
+            VkDescriptorSetAllocateInfo alloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            alloc.descriptorPool = draw.pool; alloc.descriptorSetCount = 1; alloc.pSetLayouts = &entry.setLayout;
+            check(vkAllocateDescriptorSets(mDevice, &alloc, &draw.set), "allocate draw descriptor");
+            VkDescriptorBufferInfo buffer{mBuffers->handle(draw.uniformBuffer), 0, entry.uniformImage.size()};
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.dstSet = draw.set; write.dstBinding = kUniformBinding; write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; write.pBufferInfo = &buffer;
+            vkUpdateDescriptorSets(mDevice, 1, &write, 0, nullptr);
+        }
+        ++mPins[draw.pipeline];
+    } catch (...) { destroyDraw(draw); throw; }
+    return draw;
+}
+
+void PipelineStore::unpin(VkPipeline pipeline) noexcept {
+    auto it = mPins.find(pipeline);
+    if (it == mPins.end()) return;
+    if (--it->second == 0) mPins.erase(it);
+    for (auto& retired : mRetired)
+        if (retired.pipeline == pipeline) retired.safeAfter = std::max(retired.safeAfter, mSerial);
+}
+
+void PipelineStore::destroyDraw(DrawBinding& draw) noexcept {
+    if (draw.pool) vkDestroyDescriptorPool(mDevice, draw.pool, nullptr);
+    if (draw.uniformBuffer) mBuffers->release(draw.uniformBuffer);
+    draw = {};
 }
 
 void PipelineStore::reap() noexcept {
     if (!mDevice) return;
     auto remaining = std::remove_if(mRetired.begin(), mRetired.end(), [&](Retired const& retired) {
-        if (retired.safeAfter > mCompleted) return false;
+        if (retired.safeAfter > mCompleted || mPins.contains(retired.pipeline)) return false;
         Entry entry;
         entry.vertex = retired.vertex; entry.fragment = retired.fragment;
         entry.setLayout = retired.setLayout; entry.pipelineLayout = retired.pipelineLayout;

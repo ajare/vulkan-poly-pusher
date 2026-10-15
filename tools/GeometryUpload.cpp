@@ -198,7 +198,7 @@ int main() {
         requireFails("unsupported index width", "24 bits", [&] { badIndex.load(); });
 
         // Every not-yet-delivered geometry path fails explicitly.
-        requireFails("mesh drawing", "not delivered", [&] { mesh.render(1); });
+        requireFails("mesh drawing without a program", "no program selected", [&] { mesh.render(1); });
         requireFails("buffer bind", "not delivered", [&] { buffer->bind(); });
         requireFails("buffer unbind", "not delivered", [&] { buffer->unbind(); });
         requireFails("GL attribute state", "not delivered", [&] { buffer->enableAttribute(0, true); });

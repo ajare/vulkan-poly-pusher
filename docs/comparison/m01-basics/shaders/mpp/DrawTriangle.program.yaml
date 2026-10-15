@@ -1,0 +1,18 @@
+Program:
+  name: Basics.DrawTriangle
+  positionType: 3D
+  colours: true
+  primitive: TRIANGLES
+  MeshSpecification:
+    primitive: triangles
+    indexed: false
+    storage: static
+    Buffer:
+      - data: position3
+        type: float32
+      - data: colour4
+        type: float32
+  VertexShader:
+    file: DrawTriangle.vert
+  FragmentShader:
+    file: DrawTriangle.frag

@@ -21,6 +21,7 @@ void RenderSystem::initialise() {
         throw std::runtime_error("Anti-aliasing is not delivered in the Vulkan clear/present subset");
     if (!mVulkanWindow) mVulkanWindow = detail::associatedWindow();
     mVulkanWindow->initialise();
+    m3dModelMatrix = m3dCameraMatrix = m3dProjectionMatrix = m3dModelCameraProjectionMatrix = glm::mat4(1.0f);
     mCaps = {}; // No GL context; unavailable rendering features stay false/zero.
     // Truthful native vertex-input limits for the delivered geometry-upload
     // subset; every other rendering capability remains unavailable.
@@ -96,20 +97,34 @@ void RenderSystem::setViewport(int x, int y, size_t width, size_t height) {
     mViewportX = x; mViewportY = y; mViewportWidth = width; mViewportHeight = height;
 }
 void RenderSystem::resetViewport() { setViewport(0, 0, mWindowWidth, mWindowHeight); }
-void RenderSystem::pushCameraMatrix() { throw std::runtime_error("RenderSystem::pushCameraMatrix is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::popCameraMatrix() { throw std::runtime_error("RenderSystem::popCameraMatrix is not delivered in the Vulkan clear/present subset"); }
-glm::mat4 const& RenderSystem::getCameraMatrix() const { throw std::runtime_error("RenderSystem::getCameraMatrix is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::setCamera3d(glm::vec3 const& position, glm::vec3 const& target, glm::vec3 const& up) { throw std::runtime_error("RenderSystem::setCamera3d is not delivered in the Vulkan clear/present subset"); }
+void RenderSystem::pushCameraMatrix() { m3dCameraMatrixStack.push(m3dCameraMatrix); }
+void RenderSystem::popCameraMatrix() {
+    if (m3dCameraMatrixStack.empty()) throw std::runtime_error("RenderSystem::popCameraMatrix: empty stack");
+    m3dCameraMatrix = m3dCameraMatrixStack.top(); m3dCameraMatrixStack.pop();
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
+glm::mat4 const& RenderSystem::getCameraMatrix() const { return m3dCameraMatrix; }
+void RenderSystem::setCamera3d(glm::vec3 const& position, glm::vec3 const& target, glm::vec3 const& up) {
+    m3dCameraMatrix = glm::lookAt(position, target, up);
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
 void RenderSystem::pushProjectionMatrix() { throw std::runtime_error("RenderSystem::pushProjectionMatrix is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::popProjectionMatrix() { throw std::runtime_error("RenderSystem::popProjectionMatrix is not delivered in the Vulkan clear/present subset"); }
-glm::mat4 const& RenderSystem::getProjectionMatrix() const { throw std::runtime_error("RenderSystem::getProjectionMatrix is not delivered in the Vulkan clear/present subset"); }
+glm::mat4 const& RenderSystem::getProjectionMatrix() const { return m3dProjectionMatrix; }
 void RenderSystem::setProjection3dPerspective(float fov, float nearDist, float farDist) { throw std::runtime_error("RenderSystem::setProjection3dPerspective is not delivered in the Vulkan clear/present subset"); }
-glm::mat3 RenderSystem::getNormalMatrix() const { throw std::runtime_error("RenderSystem::getNormalMatrix is not delivered in the Vulkan clear/present subset"); }
-glm::mat4 const& RenderSystem::getModelCameraProjectionMatrix() const { throw std::runtime_error("RenderSystem::getModelCameraProjectionMatrix is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::pushModelMatrix() { throw std::runtime_error("RenderSystem::pushModelMatrix is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::popModelMatrix() { throw std::runtime_error("RenderSystem::popModelMatrix is not delivered in the Vulkan clear/present subset"); }
-glm::mat4 const& RenderSystem::getModelMatrix() const { throw std::runtime_error("RenderSystem::getModelMatrix is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::resetTransform() { throw std::runtime_error("RenderSystem::resetTransform is not delivered in the Vulkan clear/present subset"); }
+glm::mat3 RenderSystem::getNormalMatrix() const { return glm::transpose(glm::inverse(glm::mat3(m3dModelMatrix))); }
+glm::mat4 const& RenderSystem::getModelCameraProjectionMatrix() const { return m3dModelCameraProjectionMatrix; }
+void RenderSystem::pushModelMatrix() { m3dModelMatrixStack.push(m3dModelMatrix); }
+void RenderSystem::popModelMatrix() {
+    if (m3dModelMatrixStack.empty()) throw std::runtime_error("RenderSystem::popModelMatrix: empty stack");
+    m3dModelMatrix = m3dModelMatrixStack.top(); m3dModelMatrixStack.pop();
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
+glm::mat4 const& RenderSystem::getModelMatrix() const { return m3dModelMatrix; }
+void RenderSystem::resetTransform() {
+    m3dModelMatrix = glm::mat4(1.0f);
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
 void RenderSystem::setLightCount(size_t count) { throw std::runtime_error("RenderSystem::setLightCount is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::setAmbientColour(Colour const& colour) { throw std::runtime_error("RenderSystem::setAmbientColour is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::setLight1Position(glm::vec3 const& pos) { throw std::runtime_error("RenderSystem::setLight1Position is not delivered in the Vulkan clear/present subset"); }
@@ -152,9 +167,18 @@ ShadowDomainDiagnostics RenderSystem::getShadowDomainDiagnostics(std::string con
 void RenderSystem::renderShadowDomain(std::string const& name, std::vector<SceneModel3dPtr> const& models, uint32_t face) { throw std::runtime_error("RenderSystem::renderShadowDomain is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::setActiveShadowDomain(std::string const& name) { throw std::runtime_error("RenderSystem::setActiveShadowDomain is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::renderDepthPrepass(std::vector<SceneModel3dPtr> const& models, CameraPtr camera, size_t colourOutputCount) { throw std::runtime_error("RenderSystem::renderDepthPrepass is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::translateTransform3d(glm::vec3 const& vec) { throw std::runtime_error("RenderSystem::translateTransform3d is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::rotateTransform3d(float angle, glm::vec3 const& axis) { throw std::runtime_error("RenderSystem::rotateTransform3d is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::scaleTransform3d(glm::vec3 const& vec) { throw std::runtime_error("RenderSystem::scaleTransform3d is not delivered in the Vulkan clear/present subset"); }
+void RenderSystem::translateTransform3d(glm::vec3 const& vec) {
+    m3dModelMatrix = glm::translate(m3dModelMatrix, vec);
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
+void RenderSystem::rotateTransform3d(float angle, glm::vec3 const& axis) {
+    m3dModelMatrix = glm::rotate(m3dModelMatrix, glm::radians(angle), axis);
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
+void RenderSystem::scaleTransform3d(glm::vec3 const& vec) {
+    m3dModelMatrix = glm::scale(m3dModelMatrix, vec);
+    m3dModelCameraProjectionMatrix = m3dProjectionMatrix * m3dCameraMatrix * m3dModelMatrix;
+}
 void RenderSystem::setProjection2dOrthographic() { throw std::runtime_error("RenderSystem::setProjection2dOrthographic is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::translateTransform2d(glm::vec2 const& vec) { throw std::runtime_error("RenderSystem::translateTransform2d is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::rotateTransform2d(float angle) { throw std::runtime_error("RenderSystem::rotateTransform2d is not delivered in the Vulkan clear/present subset"); }

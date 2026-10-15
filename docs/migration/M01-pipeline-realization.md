@@ -1,5 +1,9 @@
 # M01 program/material realization as native pipelines and descriptors — #95
 
+> Historical #95 realization evidence. [#96](M01-triangle-draw.md) now adds
+> public drawing, immutable per-draw uniform descriptors and exact per-fence
+> retirement watermarks; the drawing boundary below describes #95 alone.
+
 ## Supported subset and ownership
 
 The frozen `mpp::Program`, `mpp::BasicMaterial`, `mpp::ResourceManager` and

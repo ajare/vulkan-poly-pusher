@@ -2,8 +2,8 @@
 // behaviour (validation, CPU copies, primitive vocabulary) is retained from
 // the reference; index/vertex storage is realized as device-local native
 // buffers with staged uploads and completion-based deferred destruction.
-// Drawing and GL bindings are not delivered and fail explicitly; the
-// attached material resource is realized natively at load (#95).
+// Triangle draws snapshot the selected program and buffers for presentation;
+// the attached material resource is realized natively at load.
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
@@ -14,6 +14,10 @@
 #include "../PersistentMappedBuffer.h"
 #include "WindowBridge.h"
 #include "GeometryStore.h"
+#include "PipelineStore.h"
+#include "Draw.h"
+#include "VertexInputTranslation.h"
+#include <algorithm>
 #include "LegacyGpuValues.h"
 
 using namespace std;
@@ -476,14 +480,57 @@ namespace mpp
 		render(instanceCount, 0, mPrimitiveCount);
 	}
 
-	/*
-	 * Drawing is not part of the geometry-upload subset.
-	 *
-	 */
+	// Like MPP, Mesh consumes the program/uniform selection made by its caller;
+	// it does not implicitly change materials or camera uniforms.
 	void Mesh::render(size_t instanceCount, uint32_t start, size_t count) const
 	{
-		(void)instanceCount; (void)start; (void)count;
-		throw std::runtime_error("Mesh::render is not delivered in the Vulkan program/material subset; drawing arrives with the draw slice (#96)");
+		auto fail = [&](string const& reason) { throw runtime_error("Mesh::render '" + mName + "': " + reason); };
+		if (!mIsLoaded) fail("mesh is not loaded");
+		if (mPrimitiveType != mesh::Primitive::Type::Triangles)
+			fail("only triangle drawing is delivered");
+		if (instanceCount != 1) fail("instanced drawing is not delivered; use instanceCount 1");
+		if (count > UINT32_MAX / mPrimitiveSize || (mIsIndexed && start > UINT32_MAX / mPrimitiveSize)) fail("draw range overflow");
+		auto first = mIsIndexed ? start * mPrimitiveSize : start;
+		auto elements = uint32_t(count * mPrimitiveSize);
+		if (mPrimitiveCount > SIZE_MAX / mPrimitiveSize || first > mPrimitiveCount * mPrimitiveSize ||
+			elements > mPrimitiveCount * mPrimitiveSize - first) fail("draw range exceeds primitive count");
+		auto window = detail::associatedWindow();
+		auto& geometry = window->geometry();
+		auto& pipelines = window->pipelines();
+		auto program = pipelines.selected();
+		if (!program) fail("no program selected; call Program::bind first");
+		vector<VkVertexInputBindingDescription> bindings;
+		vector<VkVertexInputAttributeDescription> attributes;
+		size_t vertexLimit = SIZE_MAX;
+		for (size_t i = 0; i < mVertexBuffers.size(); ++i) {
+			auto buffer = mVertexBuffers[i];
+			if (!buffer->mVertexStride || buffer->mVertexStride > UINT32_MAX) fail("invalid vertex stride");
+			vertexLimit = min(vertexLimit, geometry.size(buffer->mVBO) / buffer->mVertexStride);
+			bindings.push_back({uint32_t(i), uint32_t(buffer->mVertexStride), VK_VERTEX_INPUT_RATE_VERTEX});
+			for (auto const& attribute : buffer->mAttributes) {
+				attributes.push_back({uint32_t(attribute.id), uint32_t(i),
+					detail::translateVertexFormat(attribute.dataType, attribute.componentSize, attribute.normalise), uint32_t(attribute.offsetInBytes)});
+			}
+		}
+		if (bindings.empty()) fail("no vertex buffers");
+		pipelines.validateGeometry(program, bindings, attributes, detail::translateTopology(mPrimitiveType));
+		if (mIsIndexed) {
+			geometry.validateIndices(mIBO, first, elements, mIndexWidth / 8, vertexLimit);
+		} else if (size_t(first) + elements > vertexLimit) fail("draw range exceeds vertex storage");
+		if (!elements) return; // A validated empty range is intentionally empty.
+		detail::Draw draw;
+		draw.first = first; draw.count = elements; draw.instances = 1;
+		draw.vertices.reserve(mVertexBuffers.size());
+		try {
+			for (auto buffer : mVertexBuffers) draw.vertices.push_back(geometry.pin(buffer->mVBO));
+			if (mIsIndexed) { draw.index = geometry.pin(mIBO); draw.indexType = mIndexWidth == 16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32; }
+			draw.program = pipelines.prepareDraw(program);
+		} catch (...) {
+			for (auto buffer : draw.vertices) geometry.unpin(buffer);
+			if (draw.index) geometry.unpin(draw.index);
+			throw;
+		}
+		window->enqueue(std::move(draw));
 	}
 
 	/*

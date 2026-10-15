@@ -1,6 +1,7 @@
 #include "WindowBridge.h"
 #include "GeometryStore.h"
 #include "PipelineStore.h"
+#include "Draw.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
@@ -35,10 +36,17 @@ struct VulkanWindow::Impl {
     VkFormat format{};
     VkExtent2D extent{};
     std::vector<VkImage> images;
+    std::vector<VkImageView> views;
+    std::vector<VkFramebuffer> framebuffers;
+    std::vector<Draw> draws;
     // Presentation waits are not covered by submission fences. Reuse a present
     // semaphore only after reacquiring its image, not when a frame fence signals.
     std::vector<VkSemaphore> presented;
-    struct Frame { VkCommandPool pool{}; VkCommandBuffer command{}; VkSemaphore acquired{}; VkFence fence{}; };
+    struct Frame {
+        VkCommandPool pool{}; VkCommandBuffer command{}; VkSemaphore acquired{}; VkFence fence{};
+        uint64_t geometrySerial{}, pipelineSerial{};
+        std::vector<Draw> draws;
+    };
     std::array<Frame, 2> frames{};
     size_t frameIndex{};
     Colour colour{0, 0, 0, 1};
@@ -58,7 +66,19 @@ struct VulkanWindow::Impl {
         if (readbackMemory) vkFreeMemory(device, readbackMemory, nullptr);
         readback = {}; readbackMemory = {};
     }
+    void unpin(Draw const& draw) noexcept {
+        for (auto buffer : draw.vertices) geometry->unpin(buffer);
+        if (draw.index) geometry->unpin(draw.index);
+        pipelines->unpin(draw.program.pipeline);
+    }
+    void discardDraws() noexcept {
+        for (auto& draw : draws) { unpin(draw); pipelines->destroyDraw(draw.program); }
+        draws.clear();
+    }
     void freeSwapchain() noexcept {
+        for (auto framebuffer : framebuffers) vkDestroyFramebuffer(device, framebuffer, nullptr);
+        for (auto view : views) vkDestroyImageView(device, view, nullptr);
+        framebuffers.clear(); views.clear();
         for (auto s : presented) vkDestroySemaphore(device, s, nullptr);
         presented.clear(); images.clear();
         if (swapchain) vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -68,7 +88,14 @@ struct VulkanWindow::Impl {
         closed = true;
         if (device) {
             vkDeviceWaitIdle(device); // teardown only
-            if (pipelines) { pipelines->shutdown(); pipelines.reset(); }
+            if (pipelines) {
+                discardDraws();
+                for (auto& frame : frames) {
+                    for (auto& draw : frame.draws) pipelines->destroyDraw(draw.program);
+                    frame.draws.clear();
+                }
+                pipelines->shutdown(); pipelines.reset();
+            }
             if (geometry) { geometry->shutdown(); geometry.reset(); }
             freeReadback(); freeSwapchain();
             for (auto& f : frames) {
@@ -90,9 +117,9 @@ struct VulkanWindow::Impl {
         if (w <= 0 || h <= 0 || (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)) return false;
         VkSurfaceCapabilitiesKHR caps;
         check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, surface, &caps), "query surface capabilities");
-        auto usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        auto usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         if ((caps.supportedUsageFlags & usage) != usage)
-            throw std::runtime_error("Vulkan surface requires transfer-destination clear and transfer-source capture support");
+            throw std::runtime_error("Vulkan surface requires colour-attachment, transfer-destination and transfer-source capture support");
         uint32_t count{};
         check(vkGetPhysicalDeviceSurfaceFormatsKHR(physical, surface, &count, nullptr), "query surface formats");
         std::vector<VkSurfaceFormatKHR> formats(count);
@@ -130,6 +157,17 @@ struct VulkanWindow::Impl {
         check(vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr), "query swapchain images");
         images.resize(count);
         check(vkGetSwapchainImagesKHR(device, swapchain, &count, images.data()), "query swapchain images");
+        views.resize(count); framebuffers.resize(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+            view.image = images[i]; view.viewType = VK_IMAGE_VIEW_TYPE_2D; view.format = format;
+            view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            check(vkCreateImageView(device, &view, nullptr, &views[i]), "create swapchain image view");
+            VkFramebufferCreateInfo fb{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+            fb.renderPass = pipelines->renderPass(format); fb.attachmentCount = 1; fb.pAttachments = &views[i];
+            fb.width = extent.width; fb.height = extent.height; fb.layers = 1;
+            check(vkCreateFramebuffer(device, &fb, nullptr, &framebuffers[i]), "create swapchain framebuffer");
+        }
         presented.resize(count);
         VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         for (auto& s : presented) check(vkCreateSemaphore(device, &sem, nullptr, &s), "create present semaphore");
@@ -224,18 +262,19 @@ struct VulkanWindow::Impl {
     void present() {
         require();
         int w{}, h{}; SDL_GetWindowSizeInPixels(window, &w, &h);
-        if (w <= 0 || h <= 0 || (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)) return;
-        if (!swapchain || uint32_t(w) != extent.width || uint32_t(h) != extent.height) if (!recreate()) return;
+        if (w <= 0 || h <= 0 || (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)) { discardDraws(); return; }
+        if (!swapchain || uint32_t(w) != extent.width || uint32_t(h) != extent.height)
+            if (!recreate()) { discardDraws(); return; }
         auto& f = frames[frameIndex];
         check(vkWaitForFences(device, 1, &f.fence, VK_TRUE, UINT64_MAX), "wait for frame reuse");
-        // The frame wait retires every earlier submission on this queue, so
-        // geometry storage released before it can be freed now.
-        if (geometry) geometry->noteFrameComplete();
-        if (pipelines) pipelines->noteFrameComplete();
+        geometry->noteFrameComplete(f.geometrySerial);
+        pipelines->noteFrameComplete(f.pipelineSerial);
+        for (auto& draw : f.draws) pipelines->destroyDraw(draw.program);
+        f.draws.clear();
         uint32_t image{};
         auto result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, f.acquired, {}, &image);
         for (int retry = 0; result == VK_ERROR_OUT_OF_DATE_KHR && retry < 3; ++retry) {
-            if (!recreate()) return;
+            if (!recreate()) { discardDraws(); return; }
             result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, f.acquired, {}, &image);
         }
         bool rebuild = result == VK_SUBOPTIMAL_KHR;
@@ -248,36 +287,62 @@ struct VulkanWindow::Impl {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = images[image]; barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        // Chain the acquire semaphore's TRANSFER wait into the transition.
-        vkCmdPipelineBarrier(f.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-        VkClearColorValue value{{colour.red, colour.green, colour.blue, colour.alpha}};
-        vkCmdClearColorImage(f.command, images[image], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &value, 1, &barrier.subresourceRange);
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        vkCmdPipelineBarrier(f.command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        VkClearValue value{}; value.color = {{colour.red, colour.green, colour.blue, colour.alpha}};
+        VkRenderPassBeginInfo pass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+        pass.renderPass = pipelines->renderPass(format); pass.framebuffer = framebuffers[image];
+        pass.renderArea.extent = extent; pass.clearValueCount = 1; pass.pClearValues = &value;
+        vkCmdBeginRenderPass(f.command, &pass, VK_SUBPASS_CONTENTS_INLINE);
+        // MPP's +Y is up; capture rows are top-down. Clip-depth conversion
+        // remains in the approved backend-specific authored shader variant.
+        VkViewport viewport{0, float(extent.height), float(extent.width), -float(extent.height), 0, 1};
+        VkRect2D scissor{{0, 0}, extent};
+        vkCmdSetViewport(f.command, 0, 1, &viewport); vkCmdSetScissor(f.command, 0, 1, &scissor);
+        for (auto const& draw : draws) {
+            if (draw.program.format != format) throw std::runtime_error("Mesh::render: surface format changed; reload the program");
+            vkCmdBindPipeline(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.program.pipeline);
+            if (draw.program.set) vkCmdBindDescriptorSets(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                draw.program.layout, 0, 1, &draw.program.set, 0, nullptr);
+            std::vector<VkDeviceSize> offsets(draw.vertices.size(), 0);
+            vkCmdBindVertexBuffers(f.command, 0, uint32_t(draw.vertices.size()), draw.vertices.data(), offsets.data());
+            if (draw.index) {
+                vkCmdBindIndexBuffer(f.command, draw.index, 0, draw.indexType);
+                vkCmdDrawIndexed(f.command, draw.count, draw.instances, draw.first, 0, 0);
+            } else vkCmdDraw(f.command, draw.count, draw.instances, draw.first, 0);
+        }
+        vkCmdEndRenderPass(f.command);
+        barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         if (capturing) {
             barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            vkCmdPipelineBarrier(f.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+            vkCmdPipelineBarrier(f.command, sourceStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
             VkBufferImageCopy copy{}; copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}; copy.imageExtent = {extent.width, extent.height, 1};
             vkCmdCopyImageToBuffer(f.command, images[image], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback, 1, &copy);
             VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER}; host.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; host.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
             host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; host.buffer = readback; host.size = VK_WHOLE_SIZE;
             vkCmdPipelineBarrier(f.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &host, 0, nullptr);
             barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
         barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; barrier.dstAccessMask = 0;
-        vkCmdPipelineBarrier(f.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        vkCmdPipelineBarrier(f.command, sourceStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         check(vkEndCommandBuffer(f.command), "end clear command");
         check(vkResetFences(device, 1, &f.fence), "reset frame fence");
-        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.waitSemaphoreCount = 1; submit.pWaitSemaphores = &f.acquired; submit.pWaitDstStageMask = &stage;
         submit.commandBufferCount = 1; submit.pCommandBuffers = &f.command; submit.signalSemaphoreCount = 1; submit.pSignalSemaphores = &presented[image];
         check(vkQueueSubmit(queue, 1, &submit, f.fence), "submit clear");
-        if (geometry) geometry->noteFrameSubmit();
-        if (pipelines) pipelines->noteFrameSubmit();
+        f.geometrySerial = geometry->noteFrameSubmit();
+        f.pipelineSerial = pipelines->noteFrameSubmit();
+        for (auto const& draw : draws) unpin(draw);
+        f.draws = std::move(draws);
+        draws.clear();
         VkPresentInfoKHR p{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; p.waitSemaphoreCount = 1; p.pWaitSemaphores = &presented[image]; p.swapchainCount = 1; p.pSwapchains = &swapchain; p.pImageIndices = &image;
         result = vkQueuePresentKHR(queue, &p);
-        if (capturing) { check(vkWaitForFences(device, 1, &f.fence, VK_TRUE, UINT64_MAX), "wait diagnostic capture"); if (geometry) geometry->noteFrameComplete(); if (pipelines) pipelines->noteFrameComplete(); saveCapture(); }
+        if (capturing) { check(vkWaitForFences(device, 1, &f.fence, VK_TRUE, UINT64_MAX), "wait diagnostic capture"); geometry->noteFrameComplete(f.geometrySerial); pipelines->noteFrameComplete(f.pipelineSerial); saveCapture(); }
         frameIndex = (frameIndex + 1) % frames.size();
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || rebuild) recreate();
         else check(result, "present clear");
@@ -287,7 +352,12 @@ VulkanWindow::VulkanWindow(SDL_Window* w, bool vsync) : impl(std::make_unique<Im
 VulkanWindow::~VulkanWindow() { shutdown(); }
 void VulkanWindow::initialise() { try { impl->initialise(); } catch (...) { impl->shutdown(); throw; } }
 void VulkanWindow::shutdown() noexcept { impl->shutdown(); }
-void VulkanWindow::clear(Colour const& c) { impl->require(); impl->colour = c; }
+void VulkanWindow::clear(Colour const& c) { impl->require(); impl->discardDraws(); impl->colour = c; }
+void VulkanWindow::enqueue(Draw draw) {
+    impl->require();
+    try { impl->draws.push_back(std::move(draw)); }
+    catch (...) { impl->unpin(draw); impl->pipelines->destroyDraw(draw.program); throw; }
+}
 void VulkanWindow::present() {
     impl->require(); // rejected pre-initialization calls do not poison startup
     try { impl->present(); }

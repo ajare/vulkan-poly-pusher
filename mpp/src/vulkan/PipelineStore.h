@@ -72,8 +72,24 @@ public:
     uint32_t selected() const { return mSelected; }
 
     // Frame-context hooks driven by the window's presentation loop.
-    void noteFrameSubmit() { ++mSerial; }
-    void noteFrameComplete();
+    uint64_t noteFrameSubmit() { return ++mSerial; }
+    void noteFrameComplete(uint64_t serial);
+
+    struct DrawBinding {
+        VkPipeline pipeline{};
+        VkPipelineLayout layout{};
+        VkDescriptorPool pool{};
+        VkDescriptorSet set{};
+        uint32_t uniformBuffer{};
+        VkFormat format{};
+    };
+    // Immutable uniforms/descriptors for one draw, owned by its frame context.
+    DrawBinding prepareDraw(uint32_t id);
+    void unpin(VkPipeline pipeline) noexcept;
+    void destroyDraw(DrawBinding& binding) noexcept;
+    void validateGeometry(uint32_t id, std::vector<VkVertexInputBindingDescription> const& bindings,
+        std::vector<VkVertexInputAttributeDescription> const& attributes, VkPrimitiveTopology topology) const;
+    VkRenderPass renderPass(VkFormat format);
 
 private:
     struct Entry {
@@ -89,6 +105,10 @@ private:
         std::vector<UniformMember> members;
         std::vector<uint8_t> uniformImage;
         std::string label;
+        VkFormat format{};
+        std::vector<VkVertexInputBindingDescription> bindings;
+        std::vector<VkVertexInputAttributeDescription> attributes;
+        VkPrimitiveTopology topology{};
     };
     struct Retired {
         VkShaderModule vertex{}, fragment{};
@@ -99,7 +119,6 @@ private:
         uint64_t safeAfter{};
     };
 
-    VkRenderPass renderPass(VkFormat format);
     void destroyEntryObjects(Entry& entry) const noexcept;
     Entry& require(uint32_t id, char const* operation);
     Entry const& require(uint32_t id, char const* operation) const;
@@ -116,6 +135,7 @@ private:
     std::map<uint32_t, Entry> mEntries;
     std::map<VkFormat, VkRenderPass> mRenderPasses;
     std::vector<Retired> mRetired;
+    std::map<VkPipeline, size_t> mPins;
 };
 
 }

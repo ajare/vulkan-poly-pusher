@@ -44,7 +44,9 @@ bool binaryRoundTrip(std::string* failure) {
     } catch (std::exception const& error) { *failure = error.what(); return false; }
 }
 
+#ifndef MPP_FROZEN_REFERENCE
 bool shaderCompilationTests(std::string* failure);
+#endif
 #ifdef VPP_GEOMETRY_TESTS
 bool geometryTranslationTests(std::string* failure);
 bool pipelineTranslationTests(std::string* failure);
@@ -53,7 +55,9 @@ bool pipelineTranslationTests(std::string* failure);
 int main() {
     struct Test { char const* name; bool (*run)(std::string*); };
     Test tests[] = {
+#ifndef MPP_FROZEN_REFERENCE
         {"Vulkan runtime shader compilation/reflection", shaderCompilationTests},
+#endif
 #ifdef VPP_GEOMETRY_TESTS
         {"Vulkan vertex-format boundary translation", geometryTranslationTests},
         {"Vulkan pipeline vertex-input/uniform translation", pipelineTranslationTests},
