@@ -358,13 +358,9 @@ namespace mpp
 		memcpy(ud.data, values, sizeof(glm::vec4) * ud.size);
 	}
 
-	/*
-	 * Upload uniform values for rendering.
-	 *
-	 */
-	void UniformCollection::bindUniforms(ResourcePtr)
-	{
-		THROW_MPP("Uniform binding requires the not-yet-delivered Vulkan renderer.", __LINE__, __FILE__, __func__);
-	}
+	// bindUniforms is implemented per backend: natively through descriptor-backed
+	// per-frame-context uniform buffers in the Vulkan renderer build
+	// (vulkan/UniformBinding.cpp), and as an explicit failure in the CPU-only
+	// build (compat/CpuResourceBoundary.cpp).
 
 }

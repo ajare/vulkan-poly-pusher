@@ -129,20 +129,84 @@ namespace mpp
 		return mChildren;
 	}
 
-	void ResourceStream::createChildResources(string const&)
+	// Child-resource realization through the resource manager: retained
+	// reference behaviour now that the manager is delivered (renderer build;
+	// the CPU-only build keeps an explicit declareResource failure).
+	void ResourceStream::createChildResources(string const& parentName)
 	{
-		throw std::runtime_error("Resource realization requires the not-yet-delivered Vulkan renderer.");
+		if (!mChildResourcesCreated)
+		{
+			for (auto child : mChildren)
+			{
+				string name = parentName + "/" + child.first;
+				auto resStream = child.second;
+
+				resStream->createChildResources(name);
+				auto childRes = mResourceMgr->declareResource(name, resStream).first;
+				childRes->acquire(this);
+			}
+
+			mChildResourcesCreated = true;
+		}
 	}
-	void ResourceStream::destroyChildResources(string const&)
+
+	void ResourceStream::destroyChildResources(string const& parentName)
 	{
-		throw std::runtime_error("Resource realization requires the not-yet-delivered Vulkan renderer.");
+		if (mChildResourcesLoaded)
+		{
+			unloadChildResources(parentName);
+		}
+
+		if (mChildResourcesCreated)
+		{
+			for (auto child : mChildren)
+			{
+				string name = parentName + "/" + child.first;
+				auto childRes = mResourceMgr->getResource(name);
+
+				child.second->destroyChildResources(name);
+			}
+
+			mChildResourcesCreated = false;
+		}
 	}
-	void ResourceStream::loadChildResources(string const&)
+
+	void ResourceStream::loadChildResources(string const& parentName)
 	{
-		throw std::runtime_error("Resource realization requires the not-yet-delivered Vulkan renderer.");
+		if (!mChildResourcesCreated)
+		{
+			createChildResources(parentName);
+		}
+
+		if (!mChildResourcesLoaded)
+		{
+			for (auto child : mChildren)
+			{
+				string name = parentName + "/" + child.first;
+				child.second->loadChildResources(name);
+
+				auto res = mResourceMgr->getResource(name);
+				res->load();
+			}
+
+			mChildResourcesLoaded = true;
+		}
 	}
-	void ResourceStream::unloadChildResources(string const&)
+
+	void ResourceStream::unloadChildResources(string const& parentName)
 	{
-		throw std::runtime_error("Resource realization requires the not-yet-delivered Vulkan renderer.");
+		if (mChildResourcesLoaded)
+		{
+			for (auto child : mChildren)
+			{
+				string name = parentName + "/" + child.first;
+				auto childRes = mResourceMgr->getResource(name);
+				childRes->release(this);
+
+				child.second->unloadChildResources(name);
+			}
+
+			mChildResourcesLoaded = false;
+		}
 	}
 }

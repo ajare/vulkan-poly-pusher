@@ -276,6 +276,8 @@ std::vector<uint8_t> GeometryStore::readbackLabel(std::string const& label) {
     return readback(it->second);
 }
 
+VkBuffer GeometryStore::handle(uint32_t id) { return require(id, "Geometry handle query").buffer; }
+
 void GeometryStore::requireVertexFormat(VkFormat format, std::string const& context) const {
     VkFormatProperties properties;
     vkGetPhysicalDeviceFormatProperties(mPhysical, format, &properties);

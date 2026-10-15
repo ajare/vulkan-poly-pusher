@@ -47,6 +47,7 @@ bool binaryRoundTrip(std::string* failure) {
 bool shaderCompilationTests(std::string* failure);
 #ifdef VPP_GEOMETRY_TESTS
 bool geometryTranslationTests(std::string* failure);
+bool pipelineTranslationTests(std::string* failure);
 #endif
 
 int main() {
@@ -55,6 +56,7 @@ int main() {
         {"Vulkan runtime shader compilation/reflection", shaderCompilationTests},
 #ifdef VPP_GEOMETRY_TESTS
         {"Vulkan vertex-format boundary translation", geometryTranslationTests},
+        {"Vulkan pipeline vertex-input/uniform translation", pipelineTranslationTests},
 #endif
         {"RSE5 binary round trip", binaryRoundTrip},
         {"diagnostics", mpp::runDiagnosticTests},
@@ -70,6 +72,25 @@ int main() {
         std::cout << "PASS " << test.name << '\n';
     }
 #ifdef VPP_CPU_ONLY
+#ifdef VPP_GEOMETRY_TESTS
+    // Renderer build: the resource manager and uniform binding are delivered.
+    // Binding through an unloaded program and GPU pass creation still fail
+    // explicitly; child-resource realization follows the retained reference
+    // behaviour (a childless stream is a no-op).
+    auto rejects = [](auto operation, std::string const& needle) {
+        try { operation(); }
+        catch (std::exception const& error) { return std::string(error.what()).find(needle) != std::string::npos; }
+        return false;
+    };
+    mpp::RenderGraphPassFactoryRegistry registry;
+    mpp::registerBuiltInRenderGraphPasses(registry);
+    if (!rejects([] { mpp::UniformCollection{}.bindUniforms({}); }, "not loaded") ||
+        !rejects([&] { registry.createScenePass("MPP.PbrScene"); }, "not-yet-delivered Vulkan")) {
+        std::cerr << "An unsupported operation did not fail explicitly\n"; return 1;
+    }
+    std::cout << "PASS unloaded-program uniform binding and GPU pass creation rejected\n";
+    return 0;
+#else
     auto rejects = [](auto operation) {
         try { operation(); }
         catch (std::exception const& error) { return std::string(error.what()).find("not-yet-delivered Vulkan") != std::string::npos; }
@@ -78,12 +99,12 @@ int main() {
     mpp::RenderGraphPassFactoryRegistry registry;
     mpp::registerBuiltInRenderGraphPasses(registry);
     if (!rejects([] { mpp::UniformCollection{}.bindUniforms({}); }) ||
-        !rejects([] { mpp::ProgrammaticStringStream(nullptr).createChildResources("Test"); }) ||
         !rejects([&] { registry.createScenePass("MPP.PbrScene"); })) {
         std::cerr << "An unsupported CPU-only operation did not fail explicitly\n"; return 1;
     }
-    std::cout << "PASS uniform binding, resource realization and GPU pass creation rejected\n";
+    std::cout << "PASS uniform binding and GPU pass creation rejected\n";
     return 0;
+#endif
 #else
     return 0;
 #endif

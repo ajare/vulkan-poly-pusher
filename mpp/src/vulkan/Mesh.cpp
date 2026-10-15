@@ -2,8 +2,8 @@
 // behaviour (validation, CPU copies, primitive vocabulary) is retained from
 // the reference; index/vertex storage is realized as device-local native
 // buffers with staged uploads and completion-based deferred destruction.
-// Drawing, GL bindings and persistent mapping are not delivered and fail
-// explicitly; material resource realization arrives with the material slice.
+// Drawing and GL bindings are not delivered and fail explicitly; the
+// attached material resource is realized natively at load (#95).
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
@@ -419,9 +419,12 @@ namespace mpp
 			throw;
 		}
 
-		// Material resource realization is not delivered in the geometry-upload
-		// subset; it arrives with the material/pipeline slice (#95). The
-		// reference loads the material here.
+		// Realize the attached material's program pipeline (#95). Meshes without
+		// a material (geometry-only verification) retain upload-only behaviour.
+		if (mMaterial)
+		{
+			mMaterial->load();
+		}
 
 		mIsLoaded = true;
 	}
@@ -451,7 +454,7 @@ namespace mpp
 
 	/*
 	 * Private plumbing for the GL draw path. The native draw path binds
-	 * pipeline state at render time (#95); never invoked in this subset.
+	 * pipeline state at render time (#96); never invoked in this subset.
 	 *
 	 */
 	void Mesh::bind(bool use) const
@@ -480,7 +483,7 @@ namespace mpp
 	void Mesh::render(size_t instanceCount, uint32_t start, size_t count) const
 	{
 		(void)instanceCount; (void)start; (void)count;
-		throw std::runtime_error("Mesh::render is not delivered in the Vulkan geometry-upload subset; drawing arrives with pipeline realization (#95)");
+		throw std::runtime_error("Mesh::render is not delivered in the Vulkan program/material subset; drawing arrives with the draw slice (#96)");
 	}
 
 	/*

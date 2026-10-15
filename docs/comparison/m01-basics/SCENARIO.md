@@ -101,6 +101,19 @@ in-flight destruction under mandatory Khronos + synchronization validation.
 This verifies upload contents only; it does **not** yet draw the triangle.
 See [`../../migration/M01-geometry-upload.md`](../../migration/M01-geometry-upload.md).
 
+## Delivered program/material realization fixture (#95)
+
+The authored `Basics.Triangle` program and programmatically authored variants
+realize natively through the public Program/BasicMaterial/ResourceManager APIs:
+graphics pipelines with vertex input matched to the authored mesh layout,
+descriptor set/pipeline layouts from reflection, and material uniform values in
+descriptor-backed per-frame-context storage (verified byte-exact by additive
+diagnostic readback). Runtime shader edits rebuild the affected pipeline
+without restarting the renderer; sampler/texture and authored-block programs
+fail explicitly. This verifies realization only; it does **not** yet draw the
+triangle — #96–#97 supply drawing and paired captures.
+See [`../../migration/M01-pipeline-realization.md`](../../migration/M01-pipeline-realization.md).
+
 ## Blocked on
 
 - Remaining VPP rendering slice (M1) for textured geometry/depth.

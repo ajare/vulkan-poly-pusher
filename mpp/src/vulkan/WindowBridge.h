@@ -8,6 +8,7 @@
 struct SDL_Window;
 namespace mpp::detail {
 class GeometryStore;
+class PipelineStore;
 class _MPPAPI VulkanWindow {
     struct Impl;
     std::unique_ptr<Impl> impl;
@@ -23,6 +24,9 @@ public:
     // Native geometry upload store (vertex/index buffers). Fails when the
     // renderer is not initialized or its window was destroyed.
     GeometryStore& geometry();
+    // Native program/pipeline store (#95): pipelines, descriptor layouts and
+    // per-frame-context uniform storage behind descriptor sets.
+    PipelineStore& pipelines();
     // Truthful native vertex-input limits reported through Caps.
     uint32_t maxVertexInputAttributes() const;
     uint32_t maxVertexInputBindingStride() const;

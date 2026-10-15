@@ -59,6 +59,10 @@ public:
     // Validate a translated vertex format against this device's vertex input.
     void requireVertexFormat(VkFormat format, std::string const& context) const;
 
+    // Native handle of a live buffer for descriptor writes. Backend-private;
+    // never escapes into public resource identifiers.
+    VkBuffer handle(uint32_t id);
+
     // Frame-context hooks driven by the window's presentation loop.
     void noteFrameSubmit() { ++mSerial; }
     void noteFrameComplete();

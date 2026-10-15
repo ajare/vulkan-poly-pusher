@@ -4,6 +4,7 @@
 #include "mpp/data/StructuredData.h"
 #include "mpp/mesh/MeshSpecification.h"
 #include "mpp/CompiledProgram.h"
+#include "mpp/PipelineDiagnostics.h"
 #include "mpp/program/Parser.h"
 #include "mpp/SceneDocument.h"
 #include "mpp/RenderSystem.h"

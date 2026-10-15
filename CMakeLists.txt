@@ -43,7 +43,8 @@ cpu_module(MassivePolyPusher mpp MPP_DLL_EXPORT
     MppException.cpp SceneDocument.cpp LegacyPipelineDocument.cpp PbrPipelineDocument.cpp
     RenderGraph.cpp RenderGraphTests.cpp RenderGraphPassFactoryRegistry.cpp
     UniformCollection.cpp TextureParams.cpp SamplerParams.cpp PbrMaterialFeatures.cpp PbrMaterialTests.cpp
-    ParticleEffectValidator.cpp ParticleEffectBounds.cpp ResourceWrangler.cpp ResourceStream.cpp
+    ParticleEffectValidator.cpp ParticleEffectBounds.cpp Resource.cpp ResourceWrangler.cpp ResourceStream.cpp
+    String.cpp
     TextureStreamBase.cpp TextureStream.cpp TextureData.cpp SamplerStream.cpp
     BasicMaterialStream.cpp PbrMaterialStream.cpp PostEffectMaterialStream.cpp ProgramStream.cpp
     ProgrammaticProgramStream.cpp ProgrammaticTextureStream.cpp ProgrammaticBasicMaterialStream.cpp
@@ -63,13 +64,20 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory(ext/glslang EXCLUDE_FROM_ALL)
 add_library(vpp_spirv_reflect STATIC ext/spirv-reflect/spirv_reflect.c)
 target_include_directories(vpp_spirv_reflect PUBLIC ext/spirv-reflect)
-target_sources(MassivePolyPusher PRIVATE compat/CpuResourceBoundary.cpp compat/CpuDefinitions.cpp mpp/src/vulkan/ProgramCompiler.cpp)
+target_sources(MassivePolyPusher PRIVATE compat/CpuDefinitions.cpp mpp/src/vulkan/ProgramCompiler.cpp)
+if(NOT VPP_BUILD_RENDERER)
+    # CPU-only boundary stubs; the renderer build replaces them with the
+    # native resource/program/material implementations below.
+    target_sources(MassivePolyPusher PRIVATE compat/CpuResourceBoundary.cpp)
+endif()
 target_link_libraries(MassivePolyPusher PRIVATE glslang::glslang glslang::glslang-default-resource-limits vpp_spirv_reflect)
 target_link_libraries(MassivePolyPusher PUBLIC MppData MppMesh MppProgram PRIVATE Utils)
 if(VPP_BUILD_RENDERER)
     target_sources(MassivePolyPusher PRIVATE mpp/src/vulkan/WindowBridge.cpp mpp/src/vulkan/RenderSystem.cpp
         mpp/src/vulkan/GeometryStore.cpp mpp/src/vulkan/Mesh.cpp mpp/src/vulkan/VertexBuffer.cpp
-        mpp/src/vulkan/PersistentMappedBuffer.cpp mpp/src/vulkan/GeometryDiagnostics.cpp)
+        mpp/src/vulkan/PersistentMappedBuffer.cpp mpp/src/vulkan/GeometryDiagnostics.cpp
+        mpp/src/vulkan/PipelineStore.cpp mpp/src/vulkan/Program.cpp mpp/src/vulkan/BasicMaterial.cpp
+        mpp/src/vulkan/ResourceManager.cpp mpp/src/vulkan/UniformBinding.cpp mpp/src/vulkan/PipelineDiagnostics.cpp)
     target_link_libraries(MassivePolyPusher PRIVATE Vulkan::Vulkan SDL3::SDL3)
 endif()
 cpu_module(MppResourceParsers mpp-resource-parsers MPP_RESOURCE_PARSERS_DLL_EXPORT
@@ -101,6 +109,9 @@ if(VPP_BUILD_RENDERER)
     add_executable(VppGeometryUpload tools/GeometryUpload.cpp)
     target_compile_definitions(VppGeometryUpload PRIVATE VPP_VULKAN)
     target_link_libraries(VppGeometryUpload PRIVATE MppAppSupport)
+    add_executable(VppProgramPipeline tools/ProgramPipeline.cpp)
+    target_compile_definitions(VppProgramPipeline PRIVATE VPP_VULKAN VPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(VppProgramPipeline PRIVATE MppAppSupport MppResourceParsers)
 endif()
 add_executable(VppAssetValidate tools/AssetValidate.cpp)
 target_link_libraries(VppAssetValidate PRIVATE MppResourceParsers)
@@ -113,6 +124,8 @@ if(BUILD_TESTING)
         set_tests_properties(vulkan_clear_present PROPERTIES TIMEOUT 120 LABELS "gpu;window")
         add_test(NAME vulkan_geometry_upload COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_geometry_validation.py" "$<TARGET_FILE:VppGeometryUpload>" "${CMAKE_BINARY_DIR}/geometry.log")
         set_tests_properties(vulkan_geometry_upload PROPERTIES TIMEOUT 120 LABELS "gpu;window")
+        add_test(NAME vulkan_program_pipeline COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_pipeline_validation.py" "$<TARGET_FILE:VppProgramPipeline>" "${CMAKE_BINARY_DIR}/pipeline.log")
+        set_tests_properties(vulkan_program_pipeline PROPERTIES TIMEOUT 120 LABELS "gpu;window")
     endif()
     add_test(NAME public_declarations COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/audit_public_headers.py" "${CMAKE_CURRENT_SOURCE_DIR}")
     add_library(VppPublicInterfaces OBJECT tests/PublicInterfaces.cpp)
@@ -121,8 +134,9 @@ if(BUILD_TESTING)
     target_compile_definitions(VppCpuTests PRIVATE VPP_CPU_ONLY VPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(VppCpuTests PRIVATE MppResourceParsers MppAppSupport MppMeshSpecificationParser MppHelper)
     if(VPP_BUILD_RENDERER)
-        # CPU coverage for the pure Vulkan-boundary vertex-format translation.
-        target_sources(VppCpuTests PRIVATE tests/GeometryTranslationTests.cpp)
+        # CPU coverage for the pure Vulkan-boundary vertex-format translation
+        # and the pipeline vertex-input/uniform-block translation.
+        target_sources(VppCpuTests PRIVATE tests/GeometryTranslationTests.cpp tests/PipelineTranslationTests.cpp)
         target_compile_definitions(VppCpuTests PRIVATE VPP_GEOMETRY_TESTS)
         target_include_directories(VppCpuTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/mpp/src" "${CMAKE_CURRENT_SOURCE_DIR}/compat")
         target_link_libraries(VppCpuTests PRIVATE Vulkan::Vulkan)

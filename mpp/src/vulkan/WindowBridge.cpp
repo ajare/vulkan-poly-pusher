@@ -1,5 +1,6 @@
 #include "WindowBridge.h"
 #include "GeometryStore.h"
+#include "PipelineStore.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
@@ -47,6 +48,9 @@ struct VulkanWindow::Impl {
     // Native vertex/index buffer store: staged uploads, completion-based
     // deferred destruction, diagnostic readback. Created with the device.
     std::unique_ptr<GeometryStore> geometry;
+    // Native program/pipeline store (#95): realized pipelines and
+    // descriptor-backed uniform storage, retired on the same frame watermark.
+    std::unique_ptr<PipelineStore> pipelines;
     bool live() const { return device && !closed; }
     void require() const { if (!live()) throw std::runtime_error("Vulkan renderer is not initialized or its window was destroyed"); }
     void freeReadback() noexcept {
@@ -64,6 +68,7 @@ struct VulkanWindow::Impl {
         closed = true;
         if (device) {
             vkDeviceWaitIdle(device); // teardown only
+            if (pipelines) { pipelines->shutdown(); pipelines.reset(); }
             if (geometry) { geometry->shutdown(); geometry.reset(); }
             freeReadback(); freeSwapchain();
             for (auto& f : frames) {
@@ -121,6 +126,7 @@ struct VulkanWindow::Impl {
         VkSwapchainKHR replacement{};
         check(vkCreateSwapchainKHR(device, &info, nullptr, &replacement), "create swapchain");
         freeSwapchain(); swapchain = replacement; format = chosen->format; extent = next;
+        if (pipelines) pipelines->setColourFormat(format);
         check(vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr), "query swapchain images");
         images.resize(count);
         check(vkGetSwapchainImagesKHR(device, swapchain, &count, images.data()), "query swapchain images");
@@ -176,6 +182,7 @@ struct VulkanWindow::Impl {
         check(vkCreateDevice(physical, &di, nullptr, &device), "create device");
         vkGetDeviceQueue(device, family, 0, &queue);
         geometry = std::make_unique<GeometryStore>(physical, device, queue, family);
+        pipelines = std::make_unique<PipelineStore>(physical, device, *geometry, uint32_t(frames.size()));
         for (auto& f : frames) {
             VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO}; pool.queueFamilyIndex = family;
             check(vkCreateCommandPool(device, &pool, nullptr, &f.pool), "create command pool");
@@ -224,6 +231,7 @@ struct VulkanWindow::Impl {
         // The frame wait retires every earlier submission on this queue, so
         // geometry storage released before it can be freed now.
         if (geometry) geometry->noteFrameComplete();
+        if (pipelines) pipelines->noteFrameComplete();
         uint32_t image{};
         auto result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, f.acquired, {}, &image);
         for (int retry = 0; result == VK_ERROR_OUT_OF_DATE_KHR && retry < 3; ++retry) {
@@ -266,9 +274,10 @@ struct VulkanWindow::Impl {
         submit.commandBufferCount = 1; submit.pCommandBuffers = &f.command; submit.signalSemaphoreCount = 1; submit.pSignalSemaphores = &presented[image];
         check(vkQueueSubmit(queue, 1, &submit, f.fence), "submit clear");
         if (geometry) geometry->noteFrameSubmit();
+        if (pipelines) pipelines->noteFrameSubmit();
         VkPresentInfoKHR p{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR}; p.waitSemaphoreCount = 1; p.pWaitSemaphores = &presented[image]; p.swapchainCount = 1; p.pSwapchains = &swapchain; p.pImageIndices = &image;
         result = vkQueuePresentKHR(queue, &p);
-        if (capturing) { check(vkWaitForFences(device, 1, &f.fence, VK_TRUE, UINT64_MAX), "wait diagnostic capture"); if (geometry) geometry->noteFrameComplete(); saveCapture(); }
+        if (capturing) { check(vkWaitForFences(device, 1, &f.fence, VK_TRUE, UINT64_MAX), "wait diagnostic capture"); if (geometry) geometry->noteFrameComplete(); if (pipelines) pipelines->noteFrameComplete(); saveCapture(); }
         frameIndex = (frameIndex + 1) % frames.size();
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || rebuild) recreate();
         else check(result, "present clear");
@@ -286,6 +295,7 @@ void VulkanWindow::present() {
 }
 void VulkanWindow::capture(std::string const& p) { impl->require(); if (p.empty()) throw std::runtime_error("Empty capture path"); impl->capturePath = p; }
 GeometryStore& VulkanWindow::geometry() { impl->require(); return *impl->geometry; }
+PipelineStore& VulkanWindow::pipelines() { impl->require(); return *impl->pipelines; }
 uint32_t VulkanWindow::maxVertexInputAttributes() const { impl->require(); return impl->properties.limits.maxVertexInputAttributes; }
 uint32_t VulkanWindow::maxVertexInputBindingStride() const { impl->require(); return impl->properties.limits.maxVertexInputBindingStride; }
 BackendCapabilities VulkanWindow::capabilities() const {

@@ -59,10 +59,11 @@ void RenderSystem::applyRasterState(GraphRasterState const& state, size_t colour
 void RenderSystem::forceRenderWriteMasks(bool depth, GraphColourWriteMask const& colour) { throw std::runtime_error("RenderSystem::forceRenderWriteMasks is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::debugVerifyRasterStateCache() { throw std::runtime_error("RenderSystem::debugVerifyRasterStateCache is not delivered in the Vulkan clear/present subset"); }
 RenderSystem::RasterStateCacheStats RenderSystem::getRasterStateCacheStats() const { throw std::runtime_error("RenderSystem::getRasterStateCacheStats is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::debugMessage(std::string const& message) { throw std::runtime_error("RenderSystem::debugMessage is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::infoMessage(std::string const& message) { throw std::runtime_error("RenderSystem::infoMessage is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::warnMessage(std::string const& message) { throw std::runtime_error("RenderSystem::warnMessage is not delivered in the Vulkan clear/present subset"); }
-void RenderSystem::errorMessage(std::string const& message) { throw std::runtime_error("RenderSystem::errorMessage is not delivered in the Vulkan clear/present subset"); }
+// Diagnostic logging is delivered: messages route to the client's logger.
+void RenderSystem::debugMessage(std::string const& message) { if (mLogger) mLogger->debug(message); }
+void RenderSystem::infoMessage(std::string const& message) { if (mLogger) mLogger->info(message); }
+void RenderSystem::warnMessage(std::string const& message) { if (mLogger) mLogger->warn(message); }
+void RenderSystem::errorMessage(std::string const& message) { if (mLogger) mLogger->error(message); }
 void RenderSystem::setRenderTarget(RenderTargetPtr renderTarget) { throw std::runtime_error("RenderSystem::setRenderTarget is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::pushRenderTarget(RenderTargetPtr renderTarget) { throw std::runtime_error("RenderSystem::pushRenderTarget is not delivered in the Vulkan clear/present subset"); }
 void RenderSystem::popRenderTarget() { throw std::runtime_error("RenderSystem::popRenderTarget is not delivered in the Vulkan clear/present subset"); }
